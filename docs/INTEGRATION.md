@@ -87,7 +87,7 @@ Camps Foxes & Foxes Night, Résumé ; saisons 2025-2026 et 2026-2027) :
   nom du produit) et dans l'onglet Abonnements (détenteur, type, montant net, mode de paiement,
   date de naissance, code postal, téléphone). Les deux sont pris en compte : places abonné
   de la saison → `REGULAR` + liste `CMON-Abonnes-AAAA-AAAA` ; passes via `passes_path`
-  (endpoint à renseigner, documenté dans le Manager Infomaniak). Le **détenteur** est le
+  (`/passes`). Le **détenteur** est le
   contact (pas l'acheteur), le type d'abonnement sert de tarif.
 - **Montants** : commande `Free` ou abonnement payé `Gratuit` → 0 CHF (le montant net
   affiché est la valeur catalogue, pas un encaissement).
@@ -106,7 +106,7 @@ Fichier de config du club :
 (clés courtes pour couvrir les variantes « Starwings Bâle / Starwings Basket »,
 « BBC Monthey / BBC Monthey-Chablais »…), Foxes Night en partenaire, placeholder ignoré,
 correspondances de tarifs. Un test vérifie cette config sur tous les noms d'événements des
-exports. `passes_path` reste à renseigner (voir « Adresses de l'API Infomaniak »).
+exports. `passes_path` = `/passes` (voir « Adresses de l'API Infomaniak »).
 
 `tarif_mapping` / `place_mapping` acceptent des mots-clés : la première clé dont tous les mots
 figurent dans le libellé l'emporte (« VIP - billet offert » → Gratuit car `offert` est avant).
@@ -232,22 +232,34 @@ nom de dossier (`{season}` est remplacé). Sans clé `event_lists`, la fonctionn
 
 ## Adresses de l'API Infomaniak
 
-| Donnée | Adresse configurée | Réglage | Statut |
+Référence officielle : <https://etickets.infomaniak.com/docs/app/index.html> (apiDoc ;
+`tools/summarize_api_docs.py` en extrait le catalogue via le workflow *API docs*).
+
+| Donnée | Adresse | Réglage | Accès |
 |---|---|---|---|
-| Base de l'API boutique | `https://etickets.infomaniak.com/api/shop` | `infomaniak.base_url` | par défaut, à confirmer |
-| Événements | `{base}/events` | `infomaniak.events_path` | par défaut, à confirmer |
-| Commandes (billets, lignes, scan) | `{base}/orders` (paginé `page`, `per_page`) | `infomaniak.orders_path` | par défaut, à confirmer |
-| **Abonnements / passes** | — | `infomaniak.passes_path` | **à renseigner** |
+| Base de l'API boutique | `https://etickets.infomaniak.com/api/shop` | `infomaniak.base_url` | — |
+| Événements | `GET {base}/events` | `infomaniak.events_path` | clé boutique |
+| Commandes | `GET {base}/orders` (`limit` / `offset`, filtres `status`, `begin`, `end`) | `infomaniak.orders_path` | guichet |
+| Abonnements / passes | `GET {base}/passes` (`limit` / `offset`) | `infomaniak.passes_path` | guichet |
+| Billets (scan, zone, tarif) | `GET {base}/tickets`, `GET {base}/order/{id}/tickets` | — | guichet |
 
-Authentification : en-têtes `key` (clé API de la boutique), `currency` (`1` = CHF) et `language`.
+**Authentification** (méthode *Login* de la doc) :
 
-La référence des endpoints n'est publiée que dans le Manager Infomaniak (elle n'est pas
-accessible publiquement) : **Billetterie → Boutique / Mise en ligne → Accès API → lien
-« documentation »**. Pour les abonnements, y chercher la ressource *pass* / *abonnement*
-(Infomaniak gère les abonnements comme des « passes ») et reporter son chemin dans
-`passes_path`. Champs attendus d'un pass : produit (`pass_type` / `name`), détenteur
-(`holder` : email, prénom, nom, date de naissance, code postal, téléphone), montant net,
-mode de paiement, date de commande, code du pass. Ensuite :
+- en-tête `key` : clé API de la boutique avec droits de vente (Manager → Boutique / Mise en
+  ligne → Accès API), plus `currency` (`1` = CHF) et `Accept-Language` (`fr_FR`) ;
+- endpoints « guichet » (commandes, billets, passes) : en plus, **`Authorization`** = jeton
+  API du compte Manager (*Mon profil → Développeur → Jetons API*, jeton pour « etickets »),
+  envoyé en `Bearer <jeton>` (`infomaniak.token_scheme` : `""` pour l'envoyer brut) ;
+- alternative : **`Credential`** renvoyé par `GET /login` (clé + utilisateur + mot de passe
+  d'application ; incompatible avec la double authentification).
+
+Secrets GitHub : `INFOMANIAK_API_KEY_<CLUB>` (clé boutique) et `INFOMANIAK_TOKEN_<CLUB>`
+(jeton). Le mode `probe` du workflow essaie chaque variante sur `/events` et `/orders`.
+Le compte qui crée le jeton doit avoir accès à la billetterie du club.
+
+Champs attendus d'un pass : produit (`pass_type` / `name`), détenteur (`holder` : email,
+prénom, nom, date de naissance, code postal, téléphone), montant net, mode de paiement, date
+de commande, code du pass. Ensuite :
 
 1. workflow en mode `test` (événements) ;
 2. workflow en mode `dry-run` : vérifier `orders_fetched`, les types d'événements, les listes
@@ -255,7 +267,7 @@ mode de paiement, date de commande, code du pass. Ensuite :
 3. si un nom de champ diffère (ligne, scan, zone, tarif, prix catalogue), l'indiquer ici et
    l'ajouter aux clés lues dans `ticketing_sync/infomaniak.py`.
 
-Sans `passes_path`, les abonnés ne sont reconnus que via leurs places « Place abonné » sur les
+Avec `passes_path` vide, les abonnés ne sont reconnus que via leurs places « Place abonné » sur les
 matchs, souvent sans email : leurs dates de naissance, NPA et téléphones ne remontent pas.
 
 ## Consentement

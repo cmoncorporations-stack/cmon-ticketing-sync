@@ -2,10 +2,11 @@
   "club": "Pully Lausanne Foxes",
   "secrets": {
     "infomaniak": "INFOMANIAK_API_KEY_FOXES",
+    "infomaniak_token": "INFOMANIAK_TOKEN_FOXES",
     "brevo": "BREVO_API_KEY_FOXES"
   },
   "infomaniak": {
-    "passes_path": ""
+    "passes_path": "/passes"
   },
   "brevo": {
     "list_ids": [],

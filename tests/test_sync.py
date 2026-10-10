@@ -1,6 +1,7 @@
 """Infomaniak ticketing -> Brevo sync. HTTP fully mocked, no real calls."""
 from __future__ import annotations
 
+import json
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -45,7 +46,8 @@ def test_service_sends_key_header_and_paginates():
     first_call = req.call_args_list[0].kwargs
     assert first_call["headers"]["key"] == "k123"
     assert first_call["url"] == "https://etickets.infomaniak.com/api/shop/orders"
-    assert req.call_args_list[1].kwargs["params"]["page"] == 2
+    assert req.call_args_list[0].kwargs["params"] == {"limit": 2, "offset": 0}
+    assert req.call_args_list[1].kwargs["params"]["offset"] == 2
 
 
 def test_service_stops_when_api_ignores_pagination():
@@ -587,50 +589,62 @@ def test_partner_source_option_missing_is_reported_and_billetterie_still_written
     assert any("Business Engagement" in w for w in result["warnings"])
 
 
-@pytest.mark.parametrize("mode,header,param", [
-    ("key", ("key", "k123"), None),
-    ("bearer", ("Authorization", "Bearer k123"), None),
-    ("authorization", ("Authorization", "k123"), None),
-    ("credential", None, ("credential", "k123")),
-    ("credential_header", ("credential", "k123"), None),
-])
-def test_auth_modes(mode, header, param):
-    svc = InfomaniakTicketingService.from_config("k123", {"auth": mode})
+def _headers_of_events_call(svc):
     with patch("ticketing_sync.infomaniak.requests.request", return_value=_response(json_body=[])) as req:
         svc.get_events()
-    kwargs = req.call_args.kwargs
-    if header:
-        assert kwargs["headers"][header[0]] == header[1]
-    if param:
-        assert kwargs["params"][param[0]] == param[1]
-    others = {"key", "Authorization", "credential"} - ({header[0]} if header else set())
-    assert not others & set(kwargs["headers"])
+    return req.call_args.kwargs["headers"]
 
 
-def test_unknown_auth_mode_is_rejected():
-    with pytest.raises(ValueError):
-        InfomaniakTicketingService("k", auth="cookie")
+def test_key_only_sends_documented_headers():
+    headers = _headers_of_events_call(InfomaniakTicketingService.from_config("k123", {}))
+    assert headers["key"] == "k123" and headers["currency"] == "1"
+    assert headers["Accept-Language"] == "fr_FR"
+    assert "Authorization" not in headers and "Credential" not in headers
 
 
-def test_probe_auth_reports_each_mode_without_the_key():
-    svc = InfomaniakTicketingService("secret-key-123")
+@pytest.mark.parametrize("config,expected", [({}, "Bearer tok"), ({"token_scheme": ""}, "tok")])
+def test_token_goes_in_authorization_header(config, expected):
+    svc = InfomaniakTicketingService.from_config("k123", config, token="tok")
+    headers = _headers_of_events_call(svc)
+    assert headers["key"] == "k123" and headers["Authorization"] == expected
+
+
+def test_credential_goes_in_credential_header():
+    svc = InfomaniakTicketingService.from_config("k123", {}, credential="cred", token="tok")
+    headers = _headers_of_events_call(svc)
+    assert headers["Credential"] == "cred" and "Authorization" not in headers
+
+
+def test_probe_auth_reports_each_variant_without_secrets():
+    svc = InfomaniakTicketingService("secret-key-123", token="secret-token")
 
     def fake_get(url, headers, params, timeout):
-        ok = headers.get("Authorization") == "Bearer secret-key-123"
-        body = "[]" if ok else '{"error": "missing credential or Authorization secret-key-123"}'
+        ok = url.endswith("/events") or headers.get("Authorization") == "Bearer secret-token"
+        body = "[]" if ok else '{"error": "missing credential or Authorization secret-key-123 secret-token"}'
         response = MagicMock()
         response.status_code, response.text = (200 if ok else 400), body
         return response
 
     with patch("ticketing_sync.infomaniak.requests.get", side_effect=fake_get):
         results = svc.probe_auth()
-    assert [r["auth"] for r in results if r["ok"]] == ["bearer", "key+bearer"]
-    assert all("secret-key-123" not in r["response"] for r in results)
+    assert [(r["path"], r["auth"]) for r in results if not r["ok"]] == [
+        ("/orders", "key only"), ("/orders", "key + Authorization: <token>")]
+    assert all("secret" not in r["response"] for r in results)
 
 
-def test_combined_auth_mode_sends_both_parts():
-    svc = InfomaniakTicketingService.from_config("k123", {"auth": "key+credential_header"})
-    with patch("ticketing_sync.infomaniak.requests.request", return_value=_response(json_body=[])) as req:
-        svc.get_events()
-    headers = req.call_args.kwargs["headers"]
-    assert headers["key"] == "k123" and headers["credential"] == "k123"
+def test_errors_never_echo_secrets():
+    svc = InfomaniakTicketingService("secret-key-123", token="secret-token")
+    body = {"error": "bad token secret-token for secret-key-123"}
+    with patch("ticketing_sync.infomaniak.requests.request", return_value=_response(401, body)):
+        result = svc.test_connection()
+    assert result["success"] is False and "secret" not in json.dumps(result)
+
+
+def test_connection_checks_orders_access():
+    svc = InfomaniakTicketingService("k", token="t")
+    responses = [_response(json_body=[{"id": 1}]), _response(json_body=[{"id": 9, "status": "paid"}])]
+    with patch("ticketing_sync.infomaniak.requests.request", side_effect=responses) as req:
+        result = svc.test_connection()
+    assert result == {"success": True, "auth": "token (Bearer)", "events_count": 1,
+                      "orders_readable": True, "order_fields": ["id", "status"]}
+    assert req.call_args_list[1].kwargs["params"] == {"limit": 1}

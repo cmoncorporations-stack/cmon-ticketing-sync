@@ -1,12 +1,16 @@
 """Client for the Infomaniak ticketing (eTickets) shop API.
 
-The shop API key is created in the Infomaniak Manager under
-Billetterie > Boutique / Mise en ligne > Accès API. It is sent in the
-``key`` header, together with the shop ``currency`` and ``language``.
+Authentication (https://etickets.infomaniak.com/docs/app/index.html, "Login"):
 
-Infomaniak documents the endpoints only inside the Manager, so the base
-URL and endpoint paths are overridable (``infomaniak`` section of the
-club config file) and the
+* ``key`` header: shop API key with sales access (Manager > Shop /
+  Availability online > Api access). Enough for public endpoints (events).
+* Ticket-office endpoints (orders, tickets, passes) also need either
+  ``Authorization``: an API token of the manager account (My profile >
+  Developer > API tokens), or ``Credential``: the value returned by
+  ``GET /login`` (key + user + application password).
+
+Pagination is ``limit`` / ``offset``. The base URL and endpoint paths are
+overridable (``infomaniak`` section of the club config file) and the
 response parsing is deliberately tolerant: it accepts either a bare list
 or an object wrapping the list under ``data`` / ``orders`` / ``events`` /
 ``items``, and both nested (``customer: {...}``) and flat buyer fields.
@@ -31,9 +35,7 @@ class InfomaniakTicketingRateLimitError(InfomaniakTicketingAPIError):
 DEFAULT_BASE_URL = "https://etickets.infomaniak.com/api/shop"
 DEFAULT_EVENTS_PATH = "/events"
 DEFAULT_ORDERS_PATH = "/orders"
-# Ways of sending the shop API key, see InfomaniakTicketingService._credentials.
-AUTH_MODES = ("key", "bearer", "authorization", "credential", "credential_header",
-              "key+credential_header", "key+credential", "key+bearer", "key+authorization")
+LANGUAGES = {"fr": "fr_FR", "en": "en_GB", "de": "de_DE"}
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -65,85 +67,92 @@ def _first(d: Dict[str, Any], *keys: str) -> Any:
 
 class InfomaniakTicketingService:
     def __init__(self, api_key: str, base_url: Optional[str] = None,
-                 currency: str = "1", language: str = "fr",
+                 currency: str = "1", language: str = "fr_FR",
                  events_path: Optional[str] = None,
                  orders_path: Optional[str] = None,
                  passes_path: Optional[str] = None,
-                 page_size: int = 100,
-                 auth: str = "key"):
+                 page_size: int = 50,
+                 token: Optional[str] = None,
+                 credential: Optional[str] = None,
+                 token_scheme: str = "Bearer"):
         if not api_key:
             raise ValueError("Infomaniak ticketing API key is required")
         self.api_key = api_key
+        self.token = token or None
+        self.credential = credential or None
+        self.token_scheme = token_scheme
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
         self.events_path = events_path or DEFAULT_EVENTS_PATH
         self.orders_path = orders_path or DEFAULT_ORDERS_PATH
-        # Season tickets / passes (holder, birthdate, NPA, phone). Off unless
-        # configured: the path is only documented in the Infomaniak Manager.
+        # Season tickets / passes (holder, birthdate, NPA, phone): /passes,
+        # off unless configured.
         self.passes_path = passes_path
         self.page_size = page_size
-        if auth not in AUTH_MODES:
-            raise ValueError(f"Unknown Infomaniak auth mode '{auth}' (expected one of {', '.join(AUTH_MODES)})")
-        self.auth = auth
         self.base_headers = {
+            "key": api_key,
             "currency": str(currency),
-            "language": language,
+            "Accept-Language": LANGUAGES.get(language, language),
             "accept": "application/json",
-            "content-type": "application/json",
         }
-        self.headers, self.auth_params = self._credentials(auth)
+        self.headers = {**self.base_headers, **self._auth_headers(self.token_scheme)}
 
-    def _credentials(self, auth: str):
-        """Headers and query parameters carrying the key for ``auth``.
+    @property
+    def auth(self) -> str:
+        if self.credential:
+            return "credential"
+        return f"token ({self.token_scheme or 'raw'})" if self.token else "key only"
 
-        Infomaniak documents the shop API only inside the Manager, so the
-        way the key is sent is configurable (``infomaniak.auth``) and
-        ``probe_auth`` tries every mode against the events endpoint.
-        """
-        headers = dict(self.base_headers)
-        params: Dict[str, str] = {}
-        # A "key+..." mode sends the key header plus the second part.
-        for part in auth.split("+"):
-            if part == "key":
-                headers["key"] = self.api_key
-            elif part == "bearer":
-                headers["Authorization"] = f"Bearer {self.api_key}"
-            elif part == "authorization":
-                headers["Authorization"] = self.api_key
-            elif part == "credential":
-                params["credential"] = self.api_key
-            elif part == "credential_header":
-                headers["credential"] = self.api_key
-        return headers, params
+    def _auth_headers(self, token_scheme: Optional[str]) -> Dict[str, str]:
+        if self.credential:
+            return {"Credential": self.credential}
+        if self.token:
+            return {"Authorization": f"{token_scheme} {self.token}" if token_scheme else self.token}
+        return {}
+
+    def _mask(self, text: str) -> str:
+        for secret in (self.api_key, self.token, self.credential):
+            if secret:
+                text = text.replace(secret, "***")
+        return text
 
     def probe_auth(self) -> List[Dict[str, Any]]:
-        """Try every auth mode on the events endpoint (read only). The key
-        itself never appears in the result."""
-        url = f"{self.base_url}/{self.events_path.lstrip('/')}"
+        """Read-only check of each available way to authenticate, on the
+        events and orders endpoints. Secrets never appear in the result."""
+        variants = [("key only", {})]
+        if self.token:
+            variants += [("key + Authorization: Bearer <token>", {"Authorization": f"Bearer {self.token}"}),
+                         ("key + Authorization: <token>", {"Authorization": self.token})]
+        if self.credential:
+            variants.append(("key + Credential", {"Credential": self.credential}))
         results = []
-        for mode in AUTH_MODES:
-            headers, params = self._credentials(mode)
-            try:
-                response = requests.get(url, headers=headers, params=params, timeout=30)
-                status, body = response.status_code, (response.text or "")
-            except requests.exceptions.RequestException as e:
-                status, body = None, str(e)
-            body = body.replace(self.api_key, "***")[:160].replace("\n", " ")
-            results.append({"auth": mode, "status": status, "ok": status is not None and status < 400,
-                            "response": body})
+        for path, params in ((self.events_path, {"limit": 1}), (self.orders_path, {"limit": 1})):
+            url = f"{self.base_url}/{path.lstrip('/')}"
+            for label, extra in variants:
+                try:
+                    response = requests.get(url, headers={**self.base_headers, **extra}, params=params, timeout=30)
+                    status, body = response.status_code, (response.text or "")
+                except requests.exceptions.RequestException as e:
+                    status, body = None, str(e)
+                results.append({"path": path, "auth": label, "status": status,
+                                "ok": status is not None and status < 400,
+                                "response": self._mask(body)[:160].replace("\n", " ")})
         return results
 
     @classmethod
-    def from_config(cls, api_key: str, config: Optional[Dict[str, Any]] = None) -> "InfomaniakTicketingService":
+    def from_config(cls, api_key: str, config: Optional[Dict[str, Any]] = None,
+                    token: Optional[str] = None, credential: Optional[str] = None) -> "InfomaniakTicketingService":
         config = config or {}
         return cls(
             api_key,
             base_url=config.get("base_url"),
             currency=str(config.get("currency", "1")),
-            language=config.get("language", "fr"),
+            language=config.get("language", "fr_FR"),
             events_path=config.get("events_path"),
             orders_path=config.get("orders_path"),
             passes_path=config.get("passes_path"),
-            auth=config.get("auth") or "key",
+            token=token,
+            credential=credential,
+            token_scheme=config.get("token_scheme", "Bearer"),
         )
 
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None,
@@ -151,7 +160,7 @@ class InfomaniakTicketingService:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         try:
             response = requests.request(method=method, url=url, headers=self.headers,
-                                        params={**(params or {}), **self.auth_params}, timeout=30)
+                                        params=params, timeout=30)
         except requests.exceptions.Timeout:
             raise InfomaniakTicketingAPIError("Request timed out")
         except requests.exceptions.ConnectionError:
@@ -165,7 +174,8 @@ class InfomaniakTicketingService:
                 return self._make_request(method, endpoint, params, retry_count + 1)
             raise InfomaniakTicketingRateLimitError("Rate limit exceeded after multiple retries")
         if response.status_code in (401, 403):
-            raise InfomaniakTicketingAPIError("Invalid API key or unauthorized access")
+            raise InfomaniakTicketingAPIError(
+                f"Unauthorized ({response.status_code}) on {endpoint}: {self._mask(response.text or '')[:160]}")
         if response.status_code == 404:
             raise InfomaniakTicketingAPIError(f"Resource not found: {endpoint}")
         if response.status_code >= 400:
@@ -175,7 +185,7 @@ class InfomaniakTicketingService:
             except ValueError:
                 message = response.text or "Unknown error"
             raise InfomaniakTicketingAPIError(
-                f"Infomaniak API error ({response.status_code}): {message}")
+                f"Infomaniak API error ({response.status_code}) on {endpoint}: {self._mask(str(message))[:300]}")
 
         if not response.text:
             return {}
@@ -185,11 +195,17 @@ class InfomaniakTicketingService:
             raise InfomaniakTicketingAPIError("Infomaniak API returned a non-JSON response")
 
     def test_connection(self) -> Dict[str, Any]:
+        """Events (shop key) then one order (ticket-office access)."""
         try:
             events = self.get_events()
-            return {"success": True, "events_count": len(events)}
         except InfomaniakTicketingAPIError as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "auth": self.auth, "error": str(e)}
+        try:
+            orders = _extract_list(self._make_request("GET", self.orders_path, params={"limit": 1}), "orders")
+        except InfomaniakTicketingAPIError as e:
+            return {"success": False, "auth": self.auth, "events_count": len(events), "orders_error": str(e)}
+        return {"success": True, "auth": self.auth, "events_count": len(events), "orders_readable": True,
+                "order_fields": sorted(orders[0]) if orders else []}
 
     def get_events(self) -> List[Dict[str, Any]]:
         return _extract_list(self._make_request("GET", self.events_path), "events")
@@ -201,11 +217,11 @@ class InfomaniakTicketingService:
         Stops on an empty page, on a page shorter than ``page_size``, or
         when a page repeats the previous one (API ignoring pagination).
         """
-        page = 1
+        offset = 0
         seen = 0
         previous_ids: Optional[tuple] = None
         while seen < max_items:
-            query: Dict[str, Any] = {"page": page, "per_page": self.page_size, **(params or {})}
+            query: Dict[str, Any] = {"limit": self.page_size, "offset": offset, **(params or {})}
             items = _extract_list(self._make_request("GET", path, params=query), list_key)
             if not items:
                 return
@@ -220,12 +236,12 @@ class InfomaniakTicketingService:
                     return
             if len(items) < self.page_size:
                 return
-            page += 1
+            offset += len(items)
             time.sleep(0.2)
 
     def iter_orders(self, since: Optional[str] = None,
                     max_orders: int = 100000) -> Iterable[Dict[str, Any]]:
-        return self._iter_pages(self.orders_path, "orders", {"from": since} if since else None, max_orders)
+        return self._iter_pages(self.orders_path, "orders", {"begin": since} if since else None, max_orders)
 
     def get_orders(self, since: Optional[str] = None, max_orders: int = 100000) -> List[Dict[str, Any]]:
         return list(self.iter_orders(since=since, max_orders=max_orders))

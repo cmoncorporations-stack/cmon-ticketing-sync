@@ -1,14 +1,15 @@
 """Run the ticketing -> Brevo sync for one club.
 
-    python -m ticketing_sync --club clubs/foxes.json --test      # Infomaniak key OK?
-    python -m ticketing_sync --club clubs/foxes.json --probe     # which auth mode works?
+    python -m ticketing_sync --club clubs/foxes.json --test      # Infomaniak access OK?
+    python -m ticketing_sync --club clubs/foxes.json --probe     # which auth header works?
     python -m ticketing_sync --club clubs/foxes.json --dry-run   # read only
     python -m ticketing_sync --club clubs/foxes.json             # real sync
     python -m ticketing_sync --club clubs/foxes.json --if-due    # only at H-24 / H+24 of a match
 
 API keys come from the environment, never from the config file:
-``INFOMANIAK_API_KEY`` and ``BREVO_API_KEY`` (``BREVO_API_KEY`` is optional
-for ``--dry-run``: without it Brevo is not read either).
+``INFOMANIAK_API_KEY`` (shop key), ``INFOMANIAK_TOKEN`` (manager API token,
+or ``INFOMANIAK_CREDENTIAL`` from the /login method) and ``BREVO_API_KEY``
+(optional for ``--dry-run``: without it Brevo is not read either).
 
 Exit codes: 0 success (or nothing due), 1 configuration / API error.
 The printed report never contains contact data (emails, phones).
@@ -92,12 +93,14 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
     if not ticketing_key:
         print("INFOMANIAK_API_KEY manquant", file=sys.stderr)
         return 1
-    ticketing = InfomaniakTicketingService.from_config(ticketing_key, config.get("infomaniak"))
+    ticketing = InfomaniakTicketingService.from_config(
+        ticketing_key, config.get("infomaniak"),
+        token=os.environ.get("INFOMANIAK_TOKEN"), credential=os.environ.get("INFOMANIAK_CREDENTIAL"))
 
     if args.probe:
         results = ticketing.probe_auth()
-        print(json.dumps({"club": club, "base_url": ticketing.base_url, "events_path": ticketing.events_path,
-                          "configured_auth": ticketing.auth, "results": results}, indent=2, ensure_ascii=False))
+        print(json.dumps({"club": club, "base_url": ticketing.base_url, "configured_auth": ticketing.auth,
+                          "results": results}, indent=2, ensure_ascii=False))
         return 0 if any(r["ok"] for r in results) else 1
 
     if args.test:
