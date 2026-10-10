@@ -31,6 +31,8 @@ class InfomaniakTicketingRateLimitError(InfomaniakTicketingAPIError):
 DEFAULT_BASE_URL = "https://etickets.infomaniak.com/api/shop"
 DEFAULT_EVENTS_PATH = "/events"
 DEFAULT_ORDERS_PATH = "/orders"
+# Ways of sending the shop API key, see InfomaniakTicketingService._credentials.
+AUTH_MODES = ("key", "bearer", "authorization", "credential", "credential_header")
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -66,7 +68,8 @@ class InfomaniakTicketingService:
                  events_path: Optional[str] = None,
                  orders_path: Optional[str] = None,
                  passes_path: Optional[str] = None,
-                 page_size: int = 100):
+                 page_size: int = 100,
+                 auth: str = "key"):
         if not api_key:
             raise ValueError("Infomaniak ticketing API key is required")
         self.api_key = api_key
@@ -77,13 +80,54 @@ class InfomaniakTicketingService:
         # configured: the path is only documented in the Infomaniak Manager.
         self.passes_path = passes_path
         self.page_size = page_size
-        self.headers = {
-            "key": api_key,
+        if auth not in AUTH_MODES:
+            raise ValueError(f"Unknown Infomaniak auth mode '{auth}' (expected one of {', '.join(AUTH_MODES)})")
+        self.auth = auth
+        self.base_headers = {
             "currency": str(currency),
             "language": language,
             "accept": "application/json",
             "content-type": "application/json",
         }
+        self.headers, self.auth_params = self._credentials(auth)
+
+    def _credentials(self, auth: str):
+        """Headers and query parameters carrying the key for ``auth``.
+
+        Infomaniak documents the shop API only inside the Manager, so the
+        way the key is sent is configurable (``infomaniak.auth``) and
+        ``probe_auth`` tries every mode against the events endpoint.
+        """
+        headers = dict(self.base_headers)
+        params: Dict[str, str] = {}
+        if auth == "key":
+            headers["key"] = self.api_key
+        elif auth == "bearer":
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        elif auth == "authorization":
+            headers["Authorization"] = self.api_key
+        elif auth == "credential":
+            params["credential"] = self.api_key
+        elif auth == "credential_header":
+            headers["credential"] = self.api_key
+        return headers, params
+
+    def probe_auth(self) -> List[Dict[str, Any]]:
+        """Try every auth mode on the events endpoint (read only). The key
+        itself never appears in the result."""
+        url = f"{self.base_url}/{self.events_path.lstrip('/')}"
+        results = []
+        for mode in AUTH_MODES:
+            headers, params = self._credentials(mode)
+            try:
+                response = requests.get(url, headers=headers, params=params, timeout=30)
+                status, body = response.status_code, (response.text or "")
+            except requests.exceptions.RequestException as e:
+                status, body = None, str(e)
+            body = body.replace(self.api_key, "***")[:160].replace("\n", " ")
+            results.append({"auth": mode, "status": status, "ok": status is not None and status < 400,
+                            "response": body})
+        return results
 
     @classmethod
     def from_config(cls, api_key: str, config: Optional[Dict[str, Any]] = None) -> "InfomaniakTicketingService":
@@ -96,6 +140,7 @@ class InfomaniakTicketingService:
             events_path=config.get("events_path"),
             orders_path=config.get("orders_path"),
             passes_path=config.get("passes_path"),
+            auth=config.get("auth") or "key",
         )
 
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None,
@@ -103,7 +148,7 @@ class InfomaniakTicketingService:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         try:
             response = requests.request(method=method, url=url, headers=self.headers,
-                                        params=params, timeout=30)
+                                        params={**(params or {}), **self.auth_params}, timeout=30)
         except requests.exceptions.Timeout:
             raise InfomaniakTicketingAPIError("Request timed out")
         except requests.exceptions.ConnectionError:

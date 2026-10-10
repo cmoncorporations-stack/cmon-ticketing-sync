@@ -585,3 +585,44 @@ def test_partner_source_option_missing_is_reported_and_billetterie_still_written
     assert "SOURCE_ACQUISITION" not in contacts["boss@x.ch"]
     assert contacts["fan@x.ch"]["SOURCE_ACQUISITION"] == 1
     assert any("Business Engagement" in w for w in result["warnings"])
+
+
+@pytest.mark.parametrize("mode,header,param", [
+    ("key", ("key", "k123"), None),
+    ("bearer", ("Authorization", "Bearer k123"), None),
+    ("authorization", ("Authorization", "k123"), None),
+    ("credential", None, ("credential", "k123")),
+    ("credential_header", ("credential", "k123"), None),
+])
+def test_auth_modes(mode, header, param):
+    svc = InfomaniakTicketingService.from_config("k123", {"auth": mode})
+    with patch("ticketing_sync.infomaniak.requests.request", return_value=_response(json_body=[])) as req:
+        svc.get_events()
+    kwargs = req.call_args.kwargs
+    if header:
+        assert kwargs["headers"][header[0]] == header[1]
+    if param:
+        assert kwargs["params"][param[0]] == param[1]
+    others = {"key", "Authorization", "credential"} - ({header[0]} if header else set())
+    assert not others & set(kwargs["headers"])
+
+
+def test_unknown_auth_mode_is_rejected():
+    with pytest.raises(ValueError):
+        InfomaniakTicketingService("k", auth="cookie")
+
+
+def test_probe_auth_reports_each_mode_without_the_key():
+    svc = InfomaniakTicketingService("secret-key-123")
+
+    def fake_get(url, headers, params, timeout):
+        ok = headers.get("Authorization") == "Bearer secret-key-123"
+        body = "[]" if ok else '{"error": "missing credential or Authorization secret-key-123"}'
+        response = MagicMock()
+        response.status_code, response.text = (200 if ok else 400), body
+        return response
+
+    with patch("ticketing_sync.infomaniak.requests.get", side_effect=fake_get):
+        results = svc.probe_auth()
+    assert [r["auth"] for r in results if r["ok"]] == ["bearer"]
+    assert all("secret-key-123" not in r["response"] for r in results)

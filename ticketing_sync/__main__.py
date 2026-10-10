@@ -1,6 +1,7 @@
 """Run the ticketing -> Brevo sync for one club.
 
     python -m ticketing_sync --club clubs/foxes.json --test      # Infomaniak key OK?
+    python -m ticketing_sync --club clubs/foxes.json --probe     # which auth mode works?
     python -m ticketing_sync --club clubs/foxes.json --dry-run   # read only
     python -m ticketing_sync --club clubs/foxes.json             # real sync
     python -m ticketing_sync --club clubs/foxes.json --if-due    # only at H-24 / H+24 of a match
@@ -73,6 +74,8 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
     parser.add_argument("--club", required=True, help="Club config file, e.g. clubs/foxes.json")
     parser.add_argument("--dry-run", action="store_true", help="Read Infomaniak (and Brevo), write nothing")
     parser.add_argument("--test", action="store_true", help="Only test the Infomaniak connection")
+    parser.add_argument("--probe", action="store_true",
+                        help="Try every way of sending the Infomaniak key (read only) and report which one works")
     parser.add_argument("--if-due", action="store_true",
                         help="Sync only if a match is at H-24 or H+24 (see schedule in the config)")
     args = parser.parse_args(argv)
@@ -90,6 +93,12 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
         print("INFOMANIAK_API_KEY manquant", file=sys.stderr)
         return 1
     ticketing = InfomaniakTicketingService.from_config(ticketing_key, config.get("infomaniak"))
+
+    if args.probe:
+        results = ticketing.probe_auth()
+        print(json.dumps({"club": club, "base_url": ticketing.base_url, "events_path": ticketing.events_path,
+                          "configured_auth": ticketing.auth, "results": results}, indent=2, ensure_ascii=False))
+        return 0 if any(r["ok"] for r in results) else 1
 
     if args.test:
         result = ticketing.test_connection()

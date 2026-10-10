@@ -15,11 +15,11 @@ on:
         type: choice
         options: [foxes]
       mode:
-        description: "test = clé Infomaniak, dry-run = lecture seule, sync = synchronisation réelle"
+        description: "test = clé Infomaniak, probe = mode d'authentification, dry-run = lecture seule, sync = réel"
         required: true
         default: dry-run
         type: choice
-        options: [test, dry-run, sync]
+        options: [test, probe, dry-run, sync]
 
 permissions:
   contents: read
@@ -62,6 +62,7 @@ jobs:
           else
             case "$MODE" in
               test) args="$args --test" ;;
+              probe) args="$args --probe" ;;
               dry-run) args="$args --dry-run" ;;
               sync) ;;
             esac
