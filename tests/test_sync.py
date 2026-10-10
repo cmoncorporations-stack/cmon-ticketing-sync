@@ -752,3 +752,25 @@ def test_get_orders_reads_orders_then_tickets():
         entries = svc.get_orders()
     assert [c.kwargs["url"].rsplit("/", 1)[1] for c in req.call_args_list] == ["orders", "orders", "tickets", "tickets"]
     assert [(e["order_id"], e["event_id"]) for e in entries] == [(10, 100)]
+
+
+def test_import_without_list_upserts_each_contact():
+    from ticketing_sync.brevo import BrevoService
+    svc = BrevoService("k")
+    contacts = [{"email": "a@x.ch", "attributes": {"PRENOM": "A"}}, {"email": "b@x.ch", "attributes": {}}]
+    with patch.object(svc, "_make_request", return_value={}) as req, \
+            patch("ticketing_sync.brevo.time.sleep"):
+        result = svc.import_contacts(contacts)
+    assert result == {"processId": None, "upserted": 2}
+    assert [c.args[:2] for c in req.call_args_list] == [("POST", "/contacts")] * 2
+    assert req.call_args_list[0].kwargs["data"] == {"attributes": {"PRENOM": "A"}, "updateEnabled": True,
+                                                    "email": "a@x.ch"}
+
+
+def test_import_with_list_uses_bulk_import():
+    from ticketing_sync.brevo import BrevoService
+    svc = BrevoService("k")
+    with patch.object(svc, "_make_request", return_value={"processId": 5}) as req:
+        assert svc.import_contacts([{"email": "a@x.ch", "attributes": {}}], list_ids=[3]) == {"processId": 5}
+    assert req.call_args.args[:2] == ("POST", "/contacts/import")
+    assert req.call_args.kwargs["data"]["listIds"] == [3]

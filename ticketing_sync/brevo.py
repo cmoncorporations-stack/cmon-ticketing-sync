@@ -395,7 +395,16 @@ class BrevoService:
 
         Each contact is ``{"email": ..., "attributes": {...}}``. Brevo
         processes the import asynchronously and returns a ``processId``.
+
+        Brevo refuses an import without a target list ("Missing listIds or
+        newList"): without ``list_ids`` each contact is upserted with
+        ``POST /contacts`` instead (``processId`` is then ``None``).
         """
+        if not list_ids:
+            for contact in contacts:
+                self.upsert_contact(contact.get("attributes") or {}, email=contact.get("email"))
+                time.sleep(0.05)
+            return {"processId": None, "upserted": len(contacts)}
         data: Dict[str, Any] = {
             "jsonBody": contacts,
             "updateExistingContacts": update_existing,
