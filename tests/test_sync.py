@@ -626,3 +626,11 @@ def test_probe_auth_reports_each_mode_without_the_key():
         results = svc.probe_auth()
     assert [r["auth"] for r in results if r["ok"]] == ["bearer"]
     assert all("secret-key-123" not in r["response"] for r in results)
+
+
+def test_combined_auth_mode_sends_both_parts():
+    svc = InfomaniakTicketingService.from_config("k123", {"auth": "key+credential_header"})
+    with patch("ticketing_sync.infomaniak.requests.request", return_value=_response(json_body=[])) as req:
+        svc.get_events()
+    headers = req.call_args.kwargs["headers"]
+    assert headers["key"] == "k123" and headers["credential"] == "k123"

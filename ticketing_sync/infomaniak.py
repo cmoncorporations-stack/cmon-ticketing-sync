@@ -32,7 +32,8 @@ DEFAULT_BASE_URL = "https://etickets.infomaniak.com/api/shop"
 DEFAULT_EVENTS_PATH = "/events"
 DEFAULT_ORDERS_PATH = "/orders"
 # Ways of sending the shop API key, see InfomaniakTicketingService._credentials.
-AUTH_MODES = ("key", "bearer", "authorization", "credential", "credential_header")
+AUTH_MODES = ("key", "bearer", "authorization", "credential", "credential_header",
+              "key+credential_header", "key+credential", "key+bearer", "key+authorization")
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -100,16 +101,18 @@ class InfomaniakTicketingService:
         """
         headers = dict(self.base_headers)
         params: Dict[str, str] = {}
-        if auth == "key":
-            headers["key"] = self.api_key
-        elif auth == "bearer":
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        elif auth == "authorization":
-            headers["Authorization"] = self.api_key
-        elif auth == "credential":
-            params["credential"] = self.api_key
-        elif auth == "credential_header":
-            headers["credential"] = self.api_key
+        # A "key+..." mode sends the key header plus the second part.
+        for part in auth.split("+"):
+            if part == "key":
+                headers["key"] = self.api_key
+            elif part == "bearer":
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            elif part == "authorization":
+                headers["Authorization"] = self.api_key
+            elif part == "credential":
+                params["credential"] = self.api_key
+            elif part == "credential_header":
+                headers["credential"] = self.api_key
         return headers, params
 
     def probe_auth(self) -> List[Dict[str, Any]]:
