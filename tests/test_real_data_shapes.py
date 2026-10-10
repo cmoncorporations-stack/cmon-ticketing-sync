@@ -276,7 +276,7 @@ def test_real_tariffs_map_to_brevo_options():
         "VIP": "VIP", "Famille": "Famille", "Famille - sur place": "Famille", "Networking Event": "VIP",
         "VIP - billet offert": "Gratuit", "Prix non-membre": "Plein", "Prix membre": "Membre",
         "Billet offert standard": "Gratuit",
-        "Abonnement saison régulière - Adulte I 2026 - 2027": "Plein",
+        "Abonnement saison régulière - Adulte I 2026 - 2027": "Plein", "Pass ENBL I 2026 - 2027": "Plein",
     }
     for label, option in expected.items():
         assert write(label) == options.index(option) + 1, label
