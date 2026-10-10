@@ -57,6 +57,29 @@ def _extract_list(payload: Any, *extra_keys: str) -> List[Dict[str, Any]]:
     return []
 
 
+def shape_of(value: Any, depth: int = 0) -> Any:
+    """Field names and types of a JSON value; lists are merged item by item.
+    Values themselves are never returned (no personal data)."""
+    if isinstance(value, dict):
+        if depth > 4:
+            return "object"
+        return {k: shape_of(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        merged: Dict[str, Any] = {}
+        kinds = set()
+        for item in value:
+            if isinstance(item, dict):
+                for k, v in shape_of(item, depth + 1).items():
+                    if merged.get(k) in (None, "null"):
+                        merged[k] = v
+            else:
+                kinds.add(shape_of(item, depth + 1) if isinstance(item, list) else type(item).__name__)
+        if merged:
+            return [merged]
+        return [sorted(map(str, kinds))[0]] if kinds else []
+    return "null" if value is None else type(value).__name__
+
+
 def _first(d: Dict[str, Any], *keys: str) -> Any:
     for key in keys:
         value = d.get(key)
@@ -206,6 +229,30 @@ class InfomaniakTicketingService:
             return {"success": False, "auth": self.auth, "events_count": len(events), "orders_error": str(e)}
         return {"success": True, "auth": self.auth, "events_count": len(events), "orders_readable": True,
                 "order_fields": sorted(orders[0]) if orders else []}
+
+    def schema_samples(self) -> Dict[str, Any]:
+        """Structure (field names and types, never values) of one item of
+        each resource the sync reads, to align the parsing on the API."""
+        out: Dict[str, Any] = {}
+
+        def take(name, path, params=None, list_key=""):
+            try:
+                items = _extract_list(self._make_request("GET", path, params=params), list_key)
+            except InfomaniakTicketingAPIError as e:
+                out[name] = {"error": str(e)}
+                return []
+            out[name] = {"count_in_page": len(items), "shape": shape_of(items[:3])}
+            return items
+
+        take("events", self.events_path, {"limit": 3}, "events")
+        orders = take("orders", self.orders_path, {"limit": 3, "status": "paid"}, "orders")
+        order_id = _first(orders[0], "order_id", "id") if orders else None
+        if order_id:
+            take("order_tickets", f"/order/{order_id}/tickets")
+            take("order_passes", f"/order/{order_id}/passes")
+        take("tickets", "/tickets", {"limit": 3}, "tickets")
+        take("passes", self.passes_path or "/passes", {"limit": 3}, "passes")
+        return out
 
     def get_events(self) -> List[Dict[str, Any]]:
         return _extract_list(self._make_request("GET", self.events_path), "events")

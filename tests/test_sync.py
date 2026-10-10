@@ -648,3 +648,13 @@ def test_connection_checks_orders_access():
     assert result == {"success": True, "auth": "token (Bearer)", "events_count": 1,
                       "orders_readable": True, "order_fields": ["id", "status"]}
     assert req.call_args_list[1].kwargs["params"] == {"limit": 1}
+
+
+def test_shape_of_never_returns_values():
+    from ticketing_sync.infomaniak import shape_of
+    data = [{"email": "fan@x.ch", "amount": 25.0, "customer": {"phone": "+41790000000"}, "lines": [{"id": 1}]},
+            {"email": None, "zip": "1009"}]
+    shape = shape_of(data)
+    assert shape == [{"email": "str", "amount": "float", "customer": {"phone": "str"},
+                      "lines": [{"id": "int"}], "zip": "str"}]
+    assert "fan@x.ch" not in json.dumps(shape)

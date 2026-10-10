@@ -15,11 +15,11 @@ on:
         type: choice
         options: [foxes]
       mode:
-        description: "test = accès Infomaniak, probe = en-têtes d'authentification, dry-run = lecture seule, sync = réel"
+        description: "test = accès Infomaniak, probe = en-têtes d'authentification, schema = champs de l'API (sans valeurs), dry-run = lecture seule, sync = réel"
         required: true
         default: dry-run
         type: choice
-        options: [test, probe, dry-run, sync]
+        options: [test, probe, schema, dry-run, sync]
 
 permissions:
   contents: read
@@ -65,6 +65,7 @@ jobs:
             case "$MODE" in
               test) args="$args --test" ;;
               probe) args="$args --probe" ;;
+              schema) args="$args --schema" ;;
               dry-run) args="$args --dry-run" ;;
               sync) ;;
             esac

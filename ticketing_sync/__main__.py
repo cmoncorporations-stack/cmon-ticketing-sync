@@ -2,6 +2,7 @@
 
     python -m ticketing_sync --club clubs/foxes.json --test      # Infomaniak access OK?
     python -m ticketing_sync --club clubs/foxes.json --probe     # which auth header works?
+    python -m ticketing_sync --club clubs/foxes.json --schema    # API field names (no values)
     python -m ticketing_sync --club clubs/foxes.json --dry-run   # read only
     python -m ticketing_sync --club clubs/foxes.json             # real sync
     python -m ticketing_sync --club clubs/foxes.json --if-due    # only at H-24 / H+24 of a match
@@ -75,6 +76,8 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
     parser.add_argument("--club", required=True, help="Club config file, e.g. clubs/foxes.json")
     parser.add_argument("--dry-run", action="store_true", help="Read Infomaniak (and Brevo), write nothing")
     parser.add_argument("--test", action="store_true", help="Only test the Infomaniak connection")
+    parser.add_argument("--schema", action="store_true",
+                        help="Print the field names and types returned by the API (no values)")
     parser.add_argument("--probe", action="store_true",
                         help="Try every way of sending the Infomaniak key (read only) and report which one works")
     parser.add_argument("--if-due", action="store_true",
@@ -96,6 +99,10 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
     ticketing = InfomaniakTicketingService.from_config(
         ticketing_key, config.get("infomaniak"),
         token=os.environ.get("INFOMANIAK_TOKEN"), credential=os.environ.get("INFOMANIAK_CREDENTIAL"))
+
+    if args.schema:
+        print(json.dumps({"club": club, **ticketing.schema_samples()}, indent=1, ensure_ascii=False))
+        return 0
 
     if args.probe:
         results = ticketing.probe_auth()
