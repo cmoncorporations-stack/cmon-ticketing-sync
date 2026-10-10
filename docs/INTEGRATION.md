@@ -237,8 +237,8 @@ nom de dossier (`{season}` est remplacé). Sans clé `event_lists`, la fonctionn
 
 ## Adresses de l'API Infomaniak
 
-Référence officielle : <https://etickets.infomaniak.com/docs/app/index.html> (apiDoc ;
-`tools/summarize_api_docs.py` en extrait le catalogue via le workflow *API docs*).
+Référence officielle : <https://etickets.infomaniak.com/docs/app/index.html> (apiDoc). Le
+mode `schema` du workflow de synchro montre les champs réellement renvoyés (sans valeurs).
 
 | Donnée | Adresse | Réglage | Accès |
 |---|---|---|---|

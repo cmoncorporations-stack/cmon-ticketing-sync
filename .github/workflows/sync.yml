@@ -43,8 +43,8 @@ jobs:
       INFOMANIAK_TOKEN: ${{ secrets[format('INFOMANIAK_TOKEN_{0}', matrix.club)] }}
       BREVO_API_KEY: ${{ secrets[format('BREVO_API_KEY_{0}', matrix.club)] }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
