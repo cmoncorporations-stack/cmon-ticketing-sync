@@ -38,10 +38,11 @@ ORDERS = [
 
 def test_service_sends_key_header_and_paginates():
     svc = InfomaniakTicketingService("k123", page_size=2)
-    pages = [_response(json_body={"data": ORDERS[:2]}), _response(json_body={"data": ORDERS[2:3]})]
+    pages = [_response(json_body={"data": ORDERS[:2]}), _response(json_body={"data": ORDERS[2:3]}),
+             _response(json_body={"data": []})]
     with patch("ticketing_sync.infomaniak.requests.request", side_effect=pages) as req, \
             patch("ticketing_sync.infomaniak.time.sleep"):
-        orders = svc.get_orders()
+        orders = list(svc.iter_orders())
     assert [o["id"] for o in orders] == [1, 2, 3]
     first_call = req.call_args_list[0].kwargs
     assert first_call["headers"]["key"] == "k123"
@@ -55,7 +56,7 @@ def test_service_stops_when_api_ignores_pagination():
     same = _response(json_body=ORDERS[:2])
     with patch("ticketing_sync.infomaniak.requests.request", return_value=same), \
             patch("ticketing_sync.infomaniak.time.sleep"):
-        assert len(svc.get_orders()) == 2
+        assert len(list(svc.iter_orders())) == 2
 
 
 def test_service_maps_auth_error():
@@ -69,7 +70,7 @@ def test_service_maps_auth_error():
 def test_from_config_overrides_paths():
     svc = InfomaniakTicketingService.from_config("k", {"base_url": "https://x.test/api/", "orders_path": "/v2/orders"})
     with patch("ticketing_sync.infomaniak.requests.request", return_value=_response(json_body=[])) as req:
-        svc.get_orders()
+        list(svc.iter_orders())
     assert req.call_args.kwargs["url"] == "https://x.test/api/v2/orders"
 
 
@@ -658,3 +659,96 @@ def test_shape_of_never_returns_values():
     assert shape == [{"email": "str", "amount": "float", "customer": {"phone": "str"},
                       "lines": [{"id": "int"}], "zip": "str"}]
     assert "fan@x.ch" not in json.dumps(shape)
+
+
+# Shapes returned by the real API (schema mode, 2026-10-10); values invented.
+API_ORDERS = [
+    {"order_id": 10, "date": "2026-10-01 12:00:00", "amount": 45, "currency": "CHF", "status": "paid",
+     "tickets_count": 3, "customer": {"id": 1, "firstname": "Alex", "lastname": "Muller", "email": "alex@x.ch"}},
+    {"order_id": 11, "date": "2026-10-02 12:00:00", "amount": 20, "status": "unbooked",
+     "customer": {"id": 2, "firstname": "Sam", "lastname": "Roy", "email": "sam@x.ch"}},
+    {"order_id": 12, "date": "2026-08-01 12:00:00", "amount": 300, "status": "paid",
+     "customer": {"id": 3, "firstname": "Kim", "lastname": "Favre", "email": "kim@x.ch"}},
+]
+
+
+def _api_ticket(ticket_id, order_id, event_id, event_name, status="valid", amount="20.00",
+                category="Adulte", zone="Places assises", pass_id=None):
+    return {"ticket_id": ticket_id, "order_date": "2026-10-01 12:00:00", "amount": amount, "order_id": order_id,
+            "pass_id": pass_id, "date_id": event_id, "event_id": event_id, "status": status,
+            "category_name": category, "event_name": event_name, "event_date": "2026-10-10 17:30:00",
+            "zone_name": zone, "customer": {"id": 9, "firstname": "X", "lastname": "Y", "email": "x@x.ch"},
+            "address": {"city": "Pully"}}
+
+
+LIONS = "Pully Lausanne Foxes vs Lions de Genève - 10.10.26 - championnat SBL"
+CAMP = "Camp Foxes - 12 au 16 octobre 2026"
+
+
+def test_assemble_orders_groups_tickets_by_order_and_event():
+    from ticketing_sync.infomaniak import assemble_orders, normalize_order
+    tickets = [
+        _api_ticket(1, 10, 100, LIONS, status="scanned", amount="25.00"),
+        _api_ticket(2, 10, 100, LIONS, status="valid", amount="20.00", zone="Zone VIP", category="VIP"),
+        _api_ticket(3, 10, 200, CAMP, amount="0.00", category="Billet offert standard"),
+        _api_ticket(4, 10, 100, LIONS, status="cancelled"),
+        _api_ticket(5, 11, 100, LIONS),  # unbooked order
+        _api_ticket(6, 12, 100, LIONS, amount="0.00", pass_id=77,
+                    category="Abonnement saison régulière - Adulte I 2026 - 2027"),
+    ]
+    entries = assemble_orders(API_ORDERS, tickets)
+    assert sorted((e["order_id"], e["event_id"], len(e["tickets"])) for e in entries) == [
+        (10, 100, 2), (10, 200, 1), (12, 100, 1)]
+    lions = next(e for e in entries if (e["order_id"], e["event_id"]) == (10, 100))
+    assert lions["amount"] == 45.0 and lions["customer"]["email"] == "alex@x.ch"
+    assert all("customer" not in t and "address" not in t for t in lions["tickets"])
+
+    row = normalize_order(lions)
+    assert row["email"] == "alex@x.ch" and row["event_name"] == LIONS
+    assert row["place_categories"] == ["Places assises", "Zone VIP"]
+    assert row["tariff_categories"] == ["Adulte", "VIP"]
+    assert [line["scanned"] for line in row["lines"]] == [True, False]
+    assert [line["kind"] for line in row["lines"]] == ["billet", "billet"]
+    assert row["order_date"] == "2026-10-01 12:00:00" and row["ticket_count"] == 2
+
+    season = normalize_order(next(e for e in entries if e["order_id"] == 12))
+    assert season["lines"][0]["kind"] == "abonne"
+
+
+def test_assemble_passes_uses_holder_and_buyer_email_when_same_person():
+    from ticketing_sync.infomaniak import assemble_passes, normalize_order
+    orders = {o["order_id"]: o for o in API_ORDERS}
+    passes = [
+        {"pass_id": 1, "status": "valid", "code": "P1", "order_id": 12, "amount": 300,
+         "category_name": "Abonnement saison régulière - Adulte I 2026 - 2027",
+         "form": {"firstname": "Kim", "lastname": "FAVRE", "phone": "079 123 45 67", "birthday": None,
+                  "zipcode": "1009"}},
+        {"pass_id": 2, "status": "valid", "code": "P2", "order_id": 12, "amount": 0,
+         "category_name": "Carte membre",
+         "form": {"firstname": "Léa", "lastname": "Favre", "phone": "079 765 43 21", "zipcode": "1009"}},
+        {"pass_id": 3, "status": "cancelled", "code": "P3", "order_id": 12, "amount": 0,
+         "category_name": "Carte membre", "form": {}},
+        {"pass_id": 4, "status": "valid", "code": "P4", "order_id": 11, "amount": 0,
+         "category_name": "Carte membre", "form": {}},
+        {"pass_id": 5, "status": "valid", "code": "P5", "order_id": 10, "amount": 0,
+         "category_name": "Carte membre", "form": {"firstname": None, "lastname": None}},
+    ]
+    rows = [normalize_order(p) for p in assemble_passes(passes, orders)]
+    assert [(r["key"], r["event_name"], r["pass_code"]) for r in rows] == [
+        ("kim@x.ch", "Abonnement saison régulière - Adulte I 2026 - 2027", "P1"),
+        ("+41797654321", "Carte membre", "P2"),
+        ("alex@x.ch", "Carte membre", "P5"),
+    ]
+    assert rows[0]["zip_code"] == "1009" and rows[0]["phone"] == "+41791234567"
+    assert rows[1]["email"] is None and rows[1]["first_name"] == "Léa"
+
+
+def test_get_orders_reads_orders_then_tickets():
+    svc = InfomaniakTicketingService("k", token="t", page_size=200)
+    responses = [_response(json_body=API_ORDERS), _response(json_body=[]),
+                 _response(json_body=[_api_ticket(1, 10, 100, LIONS)]), _response(json_body=[])]
+    with patch("ticketing_sync.infomaniak.requests.request", side_effect=responses) as req, \
+            patch("ticketing_sync.infomaniak.time.sleep"):
+        entries = svc.get_orders()
+    assert [c.kwargs["url"].rsplit("/", 1)[1] for c in req.call_args_list] == ["orders", "orders", "tickets", "tickets"]
+    assert [(e["order_id"], e["event_id"]) for e in entries] == [(10, 100)]

@@ -35,6 +35,11 @@ class InfomaniakTicketingRateLimitError(InfomaniakTicketingAPIError):
 DEFAULT_BASE_URL = "https://etickets.infomaniak.com/api/shop"
 DEFAULT_EVENTS_PATH = "/events"
 DEFAULT_ORDERS_PATH = "/orders"
+DEFAULT_TICKETS_PATH = "/tickets"
+# Orders whose tickets count; prebooked / payment_requested / unbooked /
+# cancelled / refunded orders are left out.
+KEPT_ORDER_STATUSES = ("paid", "free")
+_CANCELLED_WORDS = ("cancel", "annul", "refund", "rembours", "unbooked")
 LANGUAGES = {"fr": "fr_FR", "en": "en_GB", "de": "de_DE"}
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -94,7 +99,8 @@ class InfomaniakTicketingService:
                  events_path: Optional[str] = None,
                  orders_path: Optional[str] = None,
                  passes_path: Optional[str] = None,
-                 page_size: int = 50,
+                 tickets_path: Optional[str] = None,
+                 page_size: int = 200,
                  token: Optional[str] = None,
                  credential: Optional[str] = None,
                  token_scheme: str = "Bearer"):
@@ -107,6 +113,8 @@ class InfomaniakTicketingService:
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
         self.events_path = events_path or DEFAULT_EVENTS_PATH
         self.orders_path = orders_path or DEFAULT_ORDERS_PATH
+        self.tickets_path = tickets_path or DEFAULT_TICKETS_PATH
+        self._orders_by_id: Optional[Dict[Any, Dict[str, Any]]] = None
         # Season tickets / passes (holder, birthdate, NPA, phone): /passes,
         # off unless configured.
         self.passes_path = passes_path
@@ -173,6 +181,7 @@ class InfomaniakTicketingService:
             events_path=config.get("events_path"),
             orders_path=config.get("orders_path"),
             passes_path=config.get("passes_path"),
+            tickets_path=config.get("tickets_path"),
             token=token,
             credential=credential,
             token_scheme=config.get("token_scheme", "Bearer"),
@@ -283,8 +292,9 @@ class InfomaniakTicketingService:
                     max_items: int = 100000) -> Iterable[Dict[str, Any]]:
         """Yield items page by page.
 
-        Stops on an empty page, on a page shorter than ``page_size``, or
-        when a page repeats the previous one (API ignoring pagination).
+        Stops on an empty page or when a page repeats the previous one (API
+        ignoring pagination). A short page is not taken as the end: the API
+        may cap ``limit`` below ``page_size``.
         """
         offset = 0
         seen = 0
@@ -294,7 +304,7 @@ class InfomaniakTicketingService:
             items = _extract_list(self._make_request("GET", path, params=query), list_key)
             if not items:
                 return
-            ids = tuple(_first(o, "id", "order_id", "uuid", "code") for o in items)
+            ids = tuple(_first(o, "ticket_id", "pass_id", "order_id", "id", "uuid", "code") for o in items)
             if ids == previous_ids:
                 return
             previous_ids = ids
@@ -303,28 +313,136 @@ class InfomaniakTicketingService:
                 seen += 1
                 if seen >= max_items:
                     return
-            if len(items) < self.page_size:
-                return
             offset += len(items)
             time.sleep(0.2)
 
     def iter_orders(self, since: Optional[str] = None,
                     max_orders: int = 100000) -> Iterable[Dict[str, Any]]:
+        """Raw orders (``/orders``): buyer, date, amount, status; no lines."""
         return self._iter_pages(self.orders_path, "orders", {"begin": since} if since else None, max_orders)
 
+    def orders_by_id(self) -> Dict[Any, Dict[str, Any]]:
+        if self._orders_by_id is None:
+            self._orders_by_id = {_first(o, "order_id", "id"): o for o in self.iter_orders()}
+        return self._orders_by_id
+
+    def iter_tickets(self, max_tickets: int = 1000000) -> Iterable[Dict[str, Any]]:
+        """Every ticket (``/tickets``): order, event, zone, tariff, amount,
+        status (``valid`` / ``scanned`` / ``cancelled``), pass."""
+        return self._iter_pages(self.tickets_path, "tickets", max_items=max_tickets)
+
     def get_orders(self, since: Optional[str] = None, max_orders: int = 100000) -> List[Dict[str, Any]]:
-        return list(self.iter_orders(since=since, max_orders=max_orders))
+        """Orders as the sync reads them: one entry per order and event,
+        with the order's buyer, date and status and that event's tickets
+        (see ``assemble_orders``)."""
+        return assemble_orders(self.orders_by_id().values(), self.iter_tickets())[:max_orders]
 
     def get_passes(self, max_passes: int = 100000) -> List[Dict[str, Any]]:
-        """Season tickets / passes, or [] when ``passes_path`` is not set."""
+        """Season tickets / member cards (``/passes``) with their holder, or
+        [] when ``passes_path`` is not set (see ``assemble_passes``)."""
         if not self.passes_path:
             return []
-        return list(self._iter_pages(self.passes_path, "passes", max_items=max_passes))
+        passes = list(self._iter_pages(self.passes_path, "passes", max_items=max_passes))
+        return assemble_passes(passes, self.orders_by_id())
+
+
+def _is_cancelled(status: Any) -> bool:
+    tokens = re.split(r"[^a-z0-9]+", _fold(status or ""))
+    return any(t.startswith(_CANCELLED_WORDS) for t in tokens if t)
+
+
+def _order_kept(order: Optional[Dict[str, Any]]) -> bool:
+    status = (order or {}).get("status")
+    return not status or _fold(status) in KEPT_ORDER_STATUSES
+
+
+def assemble_orders(orders: Iterable[Dict[str, Any]],
+                    tickets: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Join ``/orders`` and ``/tickets`` into what ``normalize_order`` reads.
+
+    An order can hold tickets for several events: it gives one entry per
+    (order, event), whose amount is the sum of that event's tickets.
+    Cancelled tickets and orders that are not paid / free are left out.
+    Tickets of a season ticket or member card (``pass_id``) are typed
+    "Place abonné" so they count as pre-generated seats.
+    """
+    by_id = {_first(o, "order_id", "id"): o for o in orders}
+    groups: Dict[tuple, Dict[str, Any]] = {}
+    for ticket in tickets:
+        if _is_cancelled(ticket.get("status")):
+            continue
+        order_id = _first(ticket, "order_id")
+        order = by_id.get(order_id)
+        if not _order_kept(order):
+            continue
+        key = (order_id, _first(ticket, "date_id", "event_id"))
+        entry = groups.get(key)
+        if entry is None:
+            order = order or {}
+            entry = groups[key] = {
+                "order_id": order_id,
+                "date": _first(order, "date") or ticket.get("order_date"),
+                "status": order.get("status"),
+                "customer": order.get("customer") or ticket.get("customer") or {},
+                "event_id": ticket.get("event_id"),
+                "event_name": ticket.get("event_name"),
+                "event_date": ticket.get("event_date"),
+                "amount": 0.0,
+                "tickets": [],
+            }
+        line = dict(ticket)
+        line.pop("customer", None)
+        line.pop("address", None)
+        if ticket.get("pass_id"):
+            line["line_type"] = "Place abonné"
+        entry["tickets"].append(line)
+        entry["amount"] += _number(ticket.get("amount")) or 0.0
+    return list(groups.values())
+
+
+def _same_person(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    names = [(_fold(x.get("firstname") or "").strip(), _fold(x.get("lastname") or "").strip()) for x in (a, b)]
+    return all(names[0]) and names[0] == names[1]
+
+
+def assemble_passes(passes: Iterable[Dict[str, Any]],
+                    orders_by_id: Dict[Any, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``/passes`` in the shape ``normalize_order`` reads: the holder (pass
+    form: name, phone, birthday, NPA) is the contact. The form has no
+    email: the buyer's email is used when the holder is the buyer (same
+    name) or the form is empty; otherwise the holder is identified by phone.
+    """
+    out = []
+    for item in passes:
+        if _is_cancelled(item.get("status")):
+            continue
+        order = orders_by_id.get(_first(item, "order_id")) or {}
+        if not _order_kept(order):
+            continue
+        customer = order.get("customer") or {}
+        form = {k: v for k, v in (item.get("form") or {}).items() if v not in (None, "")}
+        if not (form.get("firstname") or form.get("lastname")):
+            holder = {**form, **customer}
+        elif _same_person(form, customer):
+            holder = {**form, "email": customer.get("email")}
+        else:
+            holder = form
+        out.append({
+            "order_id": _first(item, "order_id"),
+            "date": order.get("date"),
+            "status": order.get("status"),
+            "pass_type": item.get("category_name"),
+            "category_name": item.get("category_name"),
+            "amount": item.get("amount"),
+            "code": item.get("code"),
+            "holder": holder,
+        })
+    return out
 
 
 # Field names tried, in order, for a ticket's seat category and tariff.
-_PLACE_KEYS = ("place_category", "seat_category", "category", "zone", "sector", "area", "block")
-_TARIFF_KEYS = ("tariff", "tarif", "rate", "price_category", "price_name", "price_type", "ticket_type")
+_PLACE_KEYS = ("zone_name", "place_category", "seat_category", "category", "zone", "sector", "area", "block")
+_TARIFF_KEYS = ("category_name", "tariff", "tarif", "rate", "price_category", "price_name", "price_type", "ticket_type")
 # Line type ("Billet" / "Place abonné") and scan status ("Billet scanné").
 _LINE_TYPE_KEYS = ("line_type", "type_de_ligne", "kind", "ticket_kind", "type")
 _SCAN_KEYS = ("scanned", "is_scanned", "checked_in", "scan_status", "ticket_status", "status")

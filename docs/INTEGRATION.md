@@ -257,6 +257,23 @@ Secrets GitHub : `INFOMANIAK_API_KEY_<CLUB>` (clé boutique) et `INFOMANIAK_TOKE
 (jeton). Le mode `probe` du workflow essaie chaque variante sur `/events` et `/orders`.
 Le compte qui crée le jeton doit avoir accès à la billetterie du club.
 
+**Lecture** (format constaté avec le mode `schema` du workflow, qui n'affiche que les noms
+de champs et les valeurs de statut / zone / tarif) :
+
+- `/orders` donne l'acheteur (`customer` : prénom, nom, email), la date, le montant et le
+  statut (`paid`, `free`, `unbooked`, `cancelled`), sans les billets. Seules les commandes
+  `paid` et `free` comptent.
+- `/tickets` donne chaque billet : commande, événement, date, zone (`zone_name` →
+  `CATEGORIE_PLACE`), tarif (`category_name` → `CATEGORIE_TARIF`), montant, statut
+  (`valid`, `scanned` = présent, `cancelled` = ignoré) et `pass_id` (place d'abonné ou de
+  membre, comptée comme « Place abonné »).
+- Commandes et billets sont rassemblés par commande **et** événement : une commande avec des
+  billets pour deux événements donne deux achats, chacun avec le montant de ses billets.
+- `/passes` donne les abonnements et cartes de membre : produit (`category_name`), montant,
+  code et formulaire du **détenteur** (prénom, nom, téléphone, date de naissance, NPA), sans
+  email. L'email de l'acheteur est repris quand le détenteur est l'acheteur (même nom) ou
+  que le formulaire est vide ; sinon le détenteur est identifié par son téléphone.
+
 Champs attendus d'un pass : produit (`pass_type` / `name`), détenteur (`holder` : email,
 prénom, nom, date de naissance, code postal, téléphone), montant net, mode de paiement, date
 de commande, code du pass. Ensuite :
