@@ -624,7 +624,7 @@ def test_probe_auth_reports_each_mode_without_the_key():
 
     with patch("ticketing_sync.infomaniak.requests.get", side_effect=fake_get):
         results = svc.probe_auth()
-    assert [r["auth"] for r in results if r["ok"]] == ["bearer"]
+    assert [r["auth"] for r in results if r["ok"]] == ["bearer", "key+bearer"]
     assert all("secret-key-123" not in r["response"] for r in results)
 
 
