@@ -94,7 +94,62 @@ def main():
             if isinstance(spec, dict) and ("paths" in spec or "openapi" in spec or "swagger" in spec):
                 summarize(spec)
                 return
-        print_snippets(bundle)
+        if not print_apidoc(bundle):
+            print_snippets(bundle)
+
+
+ENDPOINT_RE = re.compile(r'\{type:"(get|post|put|patch|delete)",url:"([^"]*)",title:"([^"]*)"')
+DETAIL_GROUPS = re.compile(r"login|event|order|ticket|pass|subscri|abonn|scan|customer|client|date|show", re.I)
+
+
+def html_to_text(value):
+    value = re.sub(r"<(?:br|/p|/li|/h\d)\s*/?>", "\n", value)
+    value = re.sub(r"<li>", "- ", value)
+    value = re.sub(r"<[^>]+>", "", value)
+    return re.sub(r"[ \t]+", " ", value).replace("&quot;", '"').replace("&lt;", "<").replace("&gt;", ">")
+
+
+def print_apidoc(bundle):
+    """apiDoc bundles embed one object per endpoint: print the catalogue,
+    then the full description and parameters of the useful groups."""
+    matches = list(ENDPOINT_RE.finditer(bundle))
+    if not matches:
+        return False
+    entries = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else min(len(bundle), match.end() + 20000)
+        body = bundle[match.start():end]
+        group = re.search(r'groupTitle:"([^"]*)"', body)
+        version = re.search(r'version:"([^"]*)"', body)
+        entries.append({"method": match.group(1).upper(), "url": match.group(2), "title": match.group(3),
+                        "group": group.group(1) if group else "", "version": version.group(1) if version else "",
+                        "body": body})
+    print(f"\n## apiDoc: {len(entries)} endpoints (latest version of each)")
+    latest = {}
+    for e in entries:
+        key = (e["method"], e["url"])
+        if key not in latest or e["version"] > latest[key]["version"]:
+            latest[key] = e
+    for e in sorted(latest.values(), key=lambda x: (x["group"], x["url"], x["method"])):
+        print(f"  [{e['group']}] {e['method']:6} {e['url']}  v{e['version']}  {e['title']}")
+    print("\n## details")
+    for e in sorted(latest.values(), key=lambda x: (x["group"], x["url"], x["method"])):
+        if not DETAIL_GROUPS.search(e["group"] + " " + e["url"]):
+            continue
+        print(f"\n### [{e['group']}] {e['method']} {e['url']}  v{e['version']} - {e['title']}")
+        desc = re.search(r'description:(?:`([^`]*)`|"((?:[^"\\]|\\.)*)")', e["body"])
+        if desc:
+            print(html_to_text(desc.group(1) or desc.group(2) or "").strip()[:4000])
+        for field in re.finditer(r'\{group:"([^"]*)",type:"([^"]*)",optional:!(\d)(?:,defaultValue:"[^"]*")?,'
+                                 r'field:"([^"]*)",isArray:!\d,description:(?:`([^`]*)`|"((?:[^"\\]|\\.)*)")',
+                                 e["body"]):
+            text = html_to_text(field.group(5) or field.group(6) or "").strip().replace("\n", " ")
+            req = "required" if field.group(3) == "1" else "optional"
+            print(f"  - {field.group(1)} {field.group(4)} ({field.group(2)}, {req}): {text[:200]}")
+        example = re.search(r'examples:\[\{title:"([^"]*)",content:(?:`([^`]*)`|"((?:[^"\\]|\\.)*)")', e["body"])
+        if example:
+            print("  example:", (example.group(2) or example.group(3) or "")[:1500])
+    return True
 
 
 KEYWORDS = ("credential", "Authorization", "header", "/api/", "api/shop", "Bearer", "token", "mandatory")
