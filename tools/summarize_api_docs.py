@@ -81,7 +81,42 @@ def main():
         if isinstance(spec, dict) and ("paths" in spec or "openapi" in spec or "swagger" in spec):
             summarize(spec)
             return
-    print("## no OpenAPI spec found; scripts referenced:", re.findall(r"""src=["']([^"']+)["']""", html))
+    scripts = re.findall(r"""src=["']([^"']+)["']""", html)
+    print("## no OpenAPI spec in the page; scripts referenced:", scripts)
+    for script in scripts:
+        bundle = get(urljoin(DOCS_URL, script)).text
+        # Docs assets the bundle loads (spec, markdown, json).
+        assets = sorted(set(re.findall(r"""["']([\w./-]+\.(?:json|ya?ml|md))["']""", bundle)))
+        print("## assets referenced by the bundle:", assets[:80])
+        for asset in assets:
+            response = get(urljoin(DOCS_URL, asset))
+            spec = load_spec(response) if response.status_code == 200 else None
+            if isinstance(spec, dict) and ("paths" in spec or "openapi" in spec or "swagger" in spec):
+                summarize(spec)
+                return
+        print_snippets(bundle)
+
+
+KEYWORDS = ("credential", "Authorization", "header", "/api/", "api/shop", "Bearer", "token", "mandatory")
+
+
+def print_snippets(text, width=220, limit=120):
+    """Context around auth / endpoint keywords inside a JS bundle."""
+    seen, count = set(), 0
+    for keyword in KEYWORDS:
+        for match in re.finditer(re.escape(keyword), text):
+            start = max(0, match.start() - width // 2)
+            snippet = re.sub(r"\s+", " ", text[start:start + width])
+            key = snippet[:80]
+            if key in seen:
+                continue
+            seen.add(key)
+            print(f"[{keyword}] ...{snippet}...")
+            count += 1
+            if count >= limit:
+                return
+    paths = sorted(set(re.findall(r"""["'`](/(?:api/)?[a-z_]+(?:/[a-z_{}:]+)*)["'`]""", text)))
+    print("## path-like strings:", paths[:200])
 
 
 if __name__ == "__main__":
