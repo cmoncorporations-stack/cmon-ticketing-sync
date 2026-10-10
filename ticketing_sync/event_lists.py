@@ -417,10 +417,33 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
     return plan
 
 
+def _norm_name(value: Any) -> str:
+    return " ".join(w.lower() for w in _words(str(value or "")))
+
+
+def find_folder(folders: Iterable[Dict[str, Any]], folder_name: str) -> Optional[Dict[str, Any]]:
+    """The club's folder for ``folder_name``: same name ignoring case,
+    accents and punctuation, else the only folder whose name contains it
+    ("01 - Business Engagement (B2B)" for "Business Engagement")."""
+    folders = list(folders)
+    target = _norm_name(folder_name)
+    for folder in folders:
+        if folder.get("name") == folder_name:
+            return folder
+    same = [f for f in folders if _norm_name(f.get("name")) == target]
+    if same:
+        return same[0]
+    containing = [f for f in folders if target and f" {target} " in f" {_norm_name(f.get('name'))} "]
+    return containing[0] if len(containing) == 1 else None
+
+
 def ensure_event_lists(brevo, folder_name: str, list_names: Iterable[str],
                        create: bool = True) -> Dict[str, Any]:
-    """Find or create the season folder and one list per name.
+    """Find or create the folder and one list per name.
 
+    Lists are looked up by name in the whole account, so a list moved to
+    another folder by hand is reused, never duplicated. The folder is only
+    needed (and created when missing) for lists that do not exist yet.
     Returns ``{"folder_id", "list_ids": {name: id|None}, "created_folder",
     "created_lists"}``. With ``create=False`` (dry run) nothing is
     written and missing lists map to ``None``.
@@ -428,20 +451,23 @@ def ensure_event_lists(brevo, folder_name: str, list_names: Iterable[str],
     names = sorted(set(list_names))
     result: Dict[str, Any] = {"folder_id": None, "list_ids": {n: None for n in names},
                               "created_folder": False, "created_lists": []}
-    folder = next((f for f in brevo.get_all_folders() if f.get("name") == folder_name), None)
+    folder = find_folder(brevo.get_all_folders(), folder_name)
+    existing: Dict[str, Any] = {}
+    for lst in list(brevo.get_every_list() or []) + (list(brevo.get_folder_lists(folder["id"]) or [])
+                                                    if folder else []):
+        existing.setdefault(_norm_name(lst.get("name")), lst.get("id"))
+    for name in names:
+        result["list_ids"][name] = existing.get(_norm_name(name))
+    if folder is not None:
+        result["folder_id"] = folder["id"]
+    missing = [n for n in names if result["list_ids"][n] is None]
+    if not missing or not create:
+        return result
     if folder is None:
-        if not create:
-            return result
         folder = brevo.create_folder(folder_name)
         result["created_folder"] = True
-    result["folder_id"] = folder["id"]
-
-    existing = {} if result["created_folder"] else {
-        lst.get("name"): lst.get("id") for lst in brevo.get_folder_lists(folder["id"])}
-    for name in names:
-        if name in existing:
-            result["list_ids"][name] = existing[name]
-        elif create:
-            result["list_ids"][name] = brevo.create_list(name, folder_id=folder["id"])["id"]
-            result["created_lists"].append(name)
+        result["folder_id"] = folder["id"]
+    for name in missing:
+        result["list_ids"][name] = brevo.create_list(name, folder_id=folder["id"])["id"]
+        result["created_lists"].append(name)
     return result

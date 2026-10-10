@@ -320,6 +320,10 @@ class BrevoService:
     def create_folder(self, name: str) -> Dict[str, Any]:
         return self._make_request("POST", "/contacts/folders", data={"name": name})
 
+    def get_every_list(self) -> List[Dict[str, Any]]:
+        """Every contact list of the account, whatever its folder."""
+        return self._paginate("/contacts/lists", "lists")
+
     def get_folder_lists(self, folder_id: int) -> List[Dict[str, Any]]:
         return self._paginate(f"/contacts/folders/{folder_id}/lists", "lists")
 

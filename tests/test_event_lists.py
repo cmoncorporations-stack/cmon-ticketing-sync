@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock
 
+import pytest
+
 from ticketing_sync.event_lists import (
     build_list_name,
     ensure_event_lists,
@@ -270,3 +272,26 @@ def test_member_card_is_classified_membre():
     from ticketing_sync.event_lists import classify_event
     assert classify_event("Carte membre", {}) == "membre"
     assert classify_event("Abonnement saison régulière - Adulte I 2026 - 2027", {}) == "abonnement"
+
+
+def test_list_moved_to_another_folder_is_reused_not_duplicated():
+    brevo = MagicMock()
+    brevo.get_all_folders.return_value = [{"id": 5, "name": "B2B"}]
+    brevo.get_every_list.return_value = [{"id": 229, "name": "CMON-Abonnes-VIP-2026-2027"}]
+    state = ensure_event_lists(brevo, "Business Engagement", ["CMON-Abonnes-VIP-2026-2027"])
+    assert state["list_ids"] == {"CMON-Abonnes-VIP-2026-2027": 229}
+    brevo.create_folder.assert_not_called()
+    brevo.create_list.assert_not_called()
+
+
+@pytest.mark.parametrize("existing", ["business engagement", "Business  Engagement ", "01 - Business Engagement (B2B)"])
+def test_folder_found_despite_case_spacing_or_prefix(existing):
+    brevo = MagicMock()
+    brevo.get_all_folders.return_value = [{"id": 9, "name": existing}, {"id": 1, "name": "Billetterie 2026-2027"}]
+    brevo.get_every_list.return_value = []
+    brevo.get_folder_lists.return_value = []
+    brevo.create_list.return_value = {"id": 300}
+    state = ensure_event_lists(brevo, "Business Engagement", ["CMON-FOXES-Partenaires-20261105"])
+    assert state["folder_id"] == 9 and not state["created_folder"]
+    brevo.create_folder.assert_not_called()
+    brevo.create_list.assert_called_once_with("CMON-FOXES-Partenaires-20261105", folder_id=9)
