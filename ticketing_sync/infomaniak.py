@@ -252,6 +252,28 @@ class InfomaniakTicketingService:
             take("order_passes", f"/order/{order_id}/passes")
         take("tickets", "/tickets", {"limit": 3}, "tickets")
         take("passes", self.passes_path or "/passes", {"limit": 3}, "passes")
+
+        # Value counts of enumeration fields (statuses, zones, tariffs):
+        # no personal data.
+        def counts(name, path, fields, limit=200):
+            try:
+                items = _extract_list(self._make_request("GET", path, params={"limit": limit}), name)
+            except InfomaniakTicketingAPIError as e:
+                out[f"{name}_values"] = {"error": str(e)}
+                return
+            values: Dict[str, Dict[str, int]] = {}
+            for item in items:
+                for field in fields:
+                    value = str(item.get(field))
+                    values.setdefault(field, {})
+                    values[field][value] = values[field].get(value, 0) + 1
+            values["pass_id_set"] = {"count": sum(1 for i in items if i.get("pass_id"))}
+            out[f"{name}_values"] = {"sample_size": len(items), **values}
+
+        counts("orders", self.orders_path, ("status", "currency"))
+        counts("tickets", "/tickets", ("status", "resale_status", "label", "zone_name", "category_name",
+                                       "event_name"))
+        counts("passes", self.passes_path or "/passes", ("status", "category_name", "is_validated"))
         return out
 
     def get_events(self) -> List[Dict[str, Any]]:
