@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
 from zoneinfo import ZoneInfo
 
-from ticketing_sync.event_lists import classify_event
+from ticketing_sync.event_lists import classify_event, date_override
 
 DEFAULT_OFFSET_HOURS = 24
 DEFAULT_LOOKBACK_MINUTES = 90
@@ -71,6 +71,9 @@ def due_runs(events: Iterable[Dict[str, Any]], config: Dict[str, Any],
         start = parse_event_datetime(event.get("date") or event.get("start") or event.get("start_date"), tz)
         if not name or not start or classify_event(name, classify_config) not in wanted:
             continue
+        corrected = date_override(name, classify_config)
+        if corrected:
+            start = start.replace(year=corrected.year, month=corrected.month, day=corrected.day)
         for label, mark in (("H-24", start - offset), ("H+24", start + offset)):
             if now - lookback < mark <= now:
                 due.append({"event": name, "start": start.isoformat(), "mark": label})

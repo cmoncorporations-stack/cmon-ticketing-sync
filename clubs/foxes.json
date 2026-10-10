@@ -28,6 +28,9 @@
   "event_lists": {
     "club_code": "FOXES",
     "season": "2026-2027",
+    "event_date_overrides": {
+      "Starwings 16.01.26": "2027-01-16"
+    },
     "opponent_codes": {
       "Lions de Genève": "LIONS",
       "Fribourg Olympic": "FOB",
@@ -51,6 +54,11 @@
   "ticket_attributes": {
     "tarif_mapping": {
       "offert": "Gratuit",
+      "non membre": "Plein",
+      "membre": "Membre",
+      "famille": "Famille",
+      "vip": "VIP",
+      "networking": "VIP",
       "etudiant": "Réduit",
       "avs": "Réduit",
       "enfant": "Enfant",

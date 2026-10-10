@@ -3,7 +3,9 @@
 season-ticket seats, free orders, passes, placeholders. HTTP fully mocked."""
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from ticketing_sync.event_lists import find_opponent, is_placeholder
@@ -259,3 +261,38 @@ def test_proposed_foxes_config_on_real_event_names():
         if expected_code:
             code, mapped = opponent_code(find_opponent(name, ("foxes", "pully")), event_config["opponent_codes"])
             assert (code, mapped) == (expected_code, True), name
+
+
+def test_real_tariffs_map_to_brevo_options():
+    from ticketing_sync.sync import CategoryWriter
+    options = ["Plein", "Réduit", "Enfant", "Famille", "Membre", "VIP", "Gratuit"]
+    attribute_defs = [{"name": "CATEGORIE_TARIF", "category": "normal", "type": "category",
+                       "enumeration": [{"value": i + 1, "label": o} for i, o in enumerate(options)]}]
+    config = json.loads(Path("clubs/foxes.json").read_text(encoding="utf-8"))
+    write = CategoryWriter(attribute_defs, "CATEGORIE_TARIF", config["ticket_attributes"]["tarif_mapping"])
+    expected = {
+        "Adulte": "Plein", "Parents membres": "Membre", "Parents membres - sur place": "Membre",
+        "Enfant (moins de 12 ans)": "Enfant", "Étudiant / AVS / AI": "Réduit", "Jeune (12-15 ans)": "Enfant",
+        "VIP": "VIP", "Famille": "Famille", "Famille - sur place": "Famille", "Networking Event": "VIP",
+        "VIP - billet offert": "Gratuit", "Prix non-membre": "Plein", "Prix membre": "Membre",
+        "Billet offert standard": "Gratuit",
+        "Abonnement saison régulière - Adulte I 2026 - 2027": "Plein",
+    }
+    for label, option in expected.items():
+        assert write(label) == options.index(option) + 1, label
+    assert not write.unmatched
+
+
+def test_starwings_date_is_corrected():
+    from datetime import datetime, timezone
+
+    from ticketing_sync.event_lists import EventResolver
+    from ticketing_sync.schedule import due_runs
+    config = json.loads(Path("clubs/foxes.json").read_text(encoding="utf-8"))
+    name = "Pully Lausanne Foxes vs Starwings Basket - 16.01.26 - championnat SBL"
+    resolve = EventResolver([], config["event_lists"])
+    assert resolve({"event_name": name, "event_date": "2026-01-16 19:30:00"})[1].isoformat() == "2027-01-16"
+    events = [{"name": name, "start": "2026-01-16 19:30:00"}]
+    schedule = {**config["schedule"], "event_lists": config["event_lists"]}
+    assert due_runs(events, schedule, datetime(2027, 1, 15, 18, 40, tzinfo=timezone.utc)) == [
+        {"event": name, "start": "2027-01-16T19:30:00+01:00", "mark": "H-24"}]

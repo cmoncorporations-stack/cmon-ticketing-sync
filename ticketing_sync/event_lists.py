@@ -27,6 +27,9 @@ overridable with ``folders``):
 * ``ignorer``: test events, invitations... -> left out of the sync.
 
 ``event_types`` (keyword -> type) overrides the automatic detection.
+``event_date_overrides`` (keyword -> ``YYYY-MM-DD``) corrects an event date
+that is wrong in the ticketing and cannot be fixed there (the time of day
+is kept); keywords match whole words of the event name.
 Every sync looks folders and lists up by name before creating anything, so
 re-running it only creates the lists of new events and keeps adding new
 buyers to the existing ones.
@@ -237,6 +240,17 @@ def classify_event(name: str, config: Dict[str, Any]) -> str:
     return "autre"
 
 
+def date_override(name: Optional[str], config: Dict[str, Any]) -> Optional[date]:
+    """Corrected day of an event from ``event_date_overrides``, if any."""
+    if not name:
+        return None
+    name_words = {w.lower() for w in _words(name)}
+    for keyword, value in (config.get("event_date_overrides") or {}).items():
+        if _contains_words(name_words, keyword):
+            return parse_event_date(value)
+    return None
+
+
 class EventResolver:
     """Resolve and classify the event of each order (cached per event)."""
 
@@ -247,6 +261,7 @@ class EventResolver:
 
     def __call__(self, row: Dict[str, Any]) -> Tuple[Optional[str], Optional[date], Optional[str]]:
         name, day = resolve_event(row, self.catalog)
+        day = date_override(name, self.config) or day
         if not name:
             return None, day, None
         if name not in self._types:

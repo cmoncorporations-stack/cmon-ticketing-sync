@@ -35,9 +35,9 @@ avec des attributs d'achat utilisables pour segmenter les newsletters.
 
 | Attribut | Calcul | Valeurs |
 |---|---|---|
-| `TICKET_STATUT` | **abonné de la saison en cours → `REGULAR`** ; sinon nombre de matchs distincts achetés (tout l'historique) | `NEW` = 1, `ONBOARDED` = 2, `REGULAR` ≥ 3 |
-| `CATEGORIE_PLACE` | catégorie de place du **dernier match acheté** (la plus fréquente de la commande), à défaut celle de l'abonnement en cours | options Brevo (Tribune, Virage, VIP…) |
-| `CATEGORIE_TARIF` | tarif du dernier match acheté (le plus fréquent de la commande : 2 Plein + 1 Enfant → Plein), à défaut celui de l'abonnement en cours | options Brevo (Plein, Réduit, Enfant, Gratuit) |
+| `TICKET_STATUT` | **abonné de la saison en cours → `REGULAR`** ; sinon nombre de matchs distincts achetés (tout l'historique) | catégorie Brevo, options `NEW` = 1 match, `ONBOARDED` = 2, `REGULAR` ≥ 3 |
+| `CATEGORIE_PLACE` | catégorie de place du **dernier match acheté** (la plus fréquente de la commande), à défaut celle de l'abonnement en cours | catégorie Brevo, options `Places assises`, `Zone 1`, `VIP` (zones Infomaniak ; « Zone VIP » → `VIP`) |
+| `CATEGORIE_TARIF` | tarif du dernier match acheté (le plus fréquent de la commande : 2 Plein + 1 Enfant → Plein), à défaut celui de l'abonnement en cours | catégorie Brevo, options `Plein`, `Réduit`, `Enfant`, `Famille`, `Membre`, `VIP`, `Gratuit` (correspondances : `ticket_attributes.tarif_mapping`) |
 
 Ce sont des attributs *catégorie* : ils ne sont **jamais créés** par la sync. Les libellés
 Infomaniak sont rapprochés des options Brevo (majuscules/accents ignorés) ; si les noms
@@ -226,6 +226,11 @@ Configuration (section `event_lists` du fichier `clubs/<club>.json`) :
    "club_keywords": ["foxes", "pully"]
 }}
 ```
+
+`event_date_overrides` corrige une date fausse dans la billetterie et non modifiable
+(ex. Starwings saisi « 16.01.26 » au lieu du 16.01.27) : le nom de l'événement doit contenir
+tous les mots de la clé, l'heure d'Infomaniak est conservée ; s'applique aux listes et aux
+passages H-24 / H+24.
 
 `club_code` est obligatoire (sans lui, aucune liste n'est créée) ; `lists_folder` permet un autre
 nom de dossier (`{season}` est remplacé). Sans clé `event_lists`, la fonctionnalité est désactivée.
