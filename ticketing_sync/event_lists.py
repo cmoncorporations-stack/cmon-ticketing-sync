@@ -21,6 +21,8 @@ overridable with ``folders``):
   ``Billetterie YYYY-YYYY``;
 * ``partenaire``: partner / sponsor events -> same naming, in
   ``Business Engagement``;
+* ``membre``: member cards ("Carte membre") -> ``CMON-Membres-YYYY-YYYY`` in
+  ``Members & Staff``;
 * ``autre``: anything else -> same naming, in ``Billetterie YYYY-YYYY``;
 * ``ignorer``: test events, invitations... -> left out of the sync.
 
@@ -62,8 +64,9 @@ PLACEHOLDER_KEYWORDS = ("a definir", "tbd", "to be defined")
 _SEASON_IN_NAME = re.compile(r"(20\d{2})\s*[-/]\s*(20\d{2})")
 DEFAULT_PARTENAIRE_KEYWORDS = ("partenaire", "sponsor", "business", "b2b")
 DEFAULT_CAMP_KEYWORDS = ("camp", "stage")
+DEFAULT_MEMBRE_KEYWORDS = ("carte membre", "member card", "mitgliederkarte")
 
-EVENT_TYPES = ("match", "abonnement", "camp", "partenaire", "autre", "ignorer")
+EVENT_TYPES = ("match", "abonnement", "membre", "camp", "partenaire", "autre", "ignorer")
 
 # "Foxes vs Lions" style separators; checked first because Infomaniak names
 # append details with dashes: "Pully Lausanne Foxes vs Fribourg Olympic -
@@ -164,17 +167,24 @@ def opponent_code(opponent: str, mapping: Dict[str, str]) -> Tuple[str, bool]:
 
 
 def build_list_name(club_code: str, event_name: str, event_day: date,
-                    opponent_codes: Dict[str, str], club_keywords: Iterable[str]) -> Tuple[str, Optional[str]]:
-    """Return ``(list_name, warning)`` for one event."""
+                    opponent_codes: Dict[str, str], club_keywords: Iterable[str],
+                    event_type: Optional[str] = None) -> Tuple[str, Optional[str]]:
+    """Return ``(list_name, warning)`` for one event.
+
+    Only matches get an opponent code. Other events are described by the
+    part of their name before the first dash ("Camp Foxes - 12 au 16
+    octobre 2026" -> ``Camp-Foxes``), the date being in the list name.
+    """
     stamp = event_day.strftime("%Y%m%d")
-    opponent = find_opponent(event_name, club_keywords)
+    opponent = find_opponent(event_name, club_keywords) if event_type in (None, "match") else None
     if opponent:
         code, mapped = opponent_code(opponent, opponent_codes)
         warning = None if mapped else (
             f"Code adversaire '{code}' déduit automatiquement de '{opponent}' "
             f"(ajouter '{opponent}' dans opponent_codes pour fixer le code officiel)")
         return f"CMON-{club_code}-{code}-{stamp}", warning
-    return f"CMON-{club_code}-{describe(event_name) or 'Evenement'}-{stamp}", None
+    head = _DASHES.split(event_name)[0].strip() if event_type not in (None, "match") else event_name
+    return f"CMON-{club_code}-{describe(head) or describe(event_name) or 'Evenement'}-{stamp}", None
 
 
 def event_catalog(events: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -215,7 +225,8 @@ def classify_event(name: str, config: Dict[str, Any]) -> str:
             return event_type
     # Partner packages for a match ("Soirée partenaires Foxes vs Lions") are
     # partner events, hence partners are checked before matches.
-    for event_type, defaults in (("abonnement", DEFAULT_ABONNEMENT_KEYWORDS),
+    for event_type, defaults in (("membre", DEFAULT_MEMBRE_KEYWORDS),
+                                 ("abonnement", DEFAULT_ABONNEMENT_KEYWORDS),
                                  ("partenaire", DEFAULT_PARTENAIRE_KEYWORDS),
                                  ("camp", DEFAULT_CAMP_KEYWORDS)):
         for keyword in config.get(f"{event_type}_keywords") or defaults:
@@ -347,6 +358,9 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
         if not name or event_type == "ignorer":
             continue
 
+        if event_type == "membre":
+            add(membres_list, "Membres (Carte membre)", "membre", folders["membre"], None, key)
+            continue
         if event_type == "abonnement":
             ticket_season = season_ticket_season(name, event_day, row.get("order_date"), start_month)
             if ticket_season not in (None, season):
@@ -373,7 +387,8 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
         # pre-generated abonné / member seat.
         if not counts_for_event(row, played=event_day <= today):
             continue
-        list_name, warning = build_list_name(club_code, name, event_day, opponent_codes, club_keywords)
+        list_name, warning = build_list_name(club_code, name, event_day, opponent_codes, club_keywords,
+                                             event_type)
         if warning and list_name not in warned:
             warned.add(list_name)
             plan["warnings"].append(f"{list_name} : {warning}")

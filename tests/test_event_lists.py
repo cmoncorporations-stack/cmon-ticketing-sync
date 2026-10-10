@@ -258,3 +258,15 @@ def test_real_infomaniak_match_names():
     assert find_opponent("Playoffs - Pully Lausanne Foxes vs Lions de Genève - Game 1", ("foxes",)) == "Lions de Genève"
     list_name, warning = build_list_name("FOXES", name, date(2026, 5, 9), CONFIG["opponent_codes"], ("foxes",))
     assert (list_name, warning) == ("CMON-FOXES-FOB-20260509", None)
+
+
+def test_camp_list_uses_its_description_not_an_opponent():
+    name, warning = build_list_name("FOXES", "Camp Foxes - 12 au 16 octobre 2026", date(2026, 10, 12),
+                                    {}, ("foxes", "pully"), "camp")
+    assert (name, warning) == ("CMON-FOXES-Camp-Foxes-20261012", None)
+
+
+def test_member_card_is_classified_membre():
+    from ticketing_sync.event_lists import classify_event
+    assert classify_event("Carte membre", {}) == "membre"
+    assert classify_event("Abonnement saison régulière - Adulte I 2026 - 2027", {}) == "abonnement"
