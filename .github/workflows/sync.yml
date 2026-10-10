@@ -1,0 +1,70 @@
+name: Sync billetterie -> Brevo
+
+# Toutes les heures, chaque club vérifie si un match est à H-24 ou H+24 et ne
+# synchronise que dans ce cas (voir ticketing_sync/schedule.py).
+# Lancement manuel : onglet Actions > "Sync billetterie -> Brevo" > Run workflow.
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+    inputs:
+      club:
+        description: "Club (nom du fichier dans clubs/, sans .json)"
+        required: true
+        default: foxes
+        type: choice
+        options: [foxes]
+      mode:
+        description: "test = clé Infomaniak, dry-run = lecture seule, sync = synchronisation réelle"
+        required: true
+        default: dry-run
+        type: choice
+        options: [test, dry-run, sync]
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Clubs synchronisés automatiquement : ajouter ici le nom de chaque nouveau fichier clubs/<club>.json.
+        club: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.club) || '["foxes"]') }}
+    concurrency:
+      group: sync-${{ matrix.club }}
+      cancel-in-progress: false
+    env:
+      # Secrets du dépôt nommés INFOMANIAK_API_KEY_<CLUB> et BREVO_API_KEY_<CLUB>.
+      INFOMANIAK_API_KEY: ${{ secrets[format('INFOMANIAK_API_KEY_{0}', matrix.club)] }}
+      BREVO_API_KEY: ${{ secrets[format('BREVO_API_KEY_{0}', matrix.club)] }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Sync ${{ matrix.club }}
+        env:
+          EVENT: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+          # Tant que la variable du dépôt SYNC_ENABLED n'est pas à "true", les
+          # passages planifiés ne font qu'un dry run (aucune écriture dans Brevo).
+          SYNC_ENABLED: ${{ vars.SYNC_ENABLED }}
+        run: |
+          args="--club clubs/${{ matrix.club }}.json"
+          if [ "$EVENT" = "schedule" ]; then
+            args="$args --if-due"
+            [ "$SYNC_ENABLED" = "true" ] || args="$args --dry-run"
+          else
+            case "$MODE" in
+              test) args="$args --test" ;;
+              dry-run) args="$args --dry-run" ;;
+              sync) ;;
+            esac
+          fi
+          echo "python -m ticketing_sync $args"
+          python -m ticketing_sync $args

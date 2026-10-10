@@ -1,0 +1,66 @@
+{
+  "club": "Pully Lausanne Foxes",
+  "secrets": {
+    "infomaniak": "INFOMANIAK_API_KEY_FOXES",
+    "brevo": "BREVO_API_KEY_FOXES"
+  },
+  "infomaniak": {
+    "passes_path": ""
+  },
+  "brevo": {
+    "list_ids": [],
+    "only_optin": false,
+    "acquisition_attribute": "SOURCE_ACQUISITION",
+    "acquisition_value": "Billetterie",
+    "partner_acquisition_value": "Business Engagement",
+    "optin_attribute": "OPT_IN",
+    "optin_value": "YES"
+  },
+  "schedule": {
+    "offset_hours": 24,
+    "lookback_minutes": 90,
+    "timezone": "Europe/Zurich",
+    "sync_event_types": [
+      "match"
+    ]
+  },
+  "event_lists": {
+    "club_code": "FOXES",
+    "season": "2026-2027",
+    "opponent_codes": {
+      "Lions de Genève": "LIONS",
+      "Fribourg Olympic": "FOB",
+      "GC Zürich": "GCZ",
+      "Monthey": "MON",
+      "Nyon": "NYO",
+      "Starwings": "SWB",
+      "Lugano": "LUG",
+      "Neuchâtel": "UNI",
+      "Massagno": "MAS",
+      "Mulhouse": "MUL",
+      "Hefte Helfen": "HHB",
+      "Syntainics": "MBC",
+      "Bristol": "BRI"
+    },
+    "event_types": {
+      "foxes night": "partenaire",
+      "les matchs arrivent bientot": "ignorer"
+    }
+  },
+  "ticket_attributes": {
+    "tarif_mapping": {
+      "offert": "Gratuit",
+      "etudiant": "Réduit",
+      "avs": "Réduit",
+      "enfant": "Enfant",
+      "jeune": "Enfant",
+      "moins": "Enfant",
+      "12 16": "Enfant",
+      "adulte": "Plein",
+      "standard": "Plein"
+    },
+    "place_mapping": {
+      "vip": "VIP"
+    }
+  }
+}
