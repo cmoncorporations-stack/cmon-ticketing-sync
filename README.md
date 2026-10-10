@@ -56,13 +56,15 @@ Un échec (clé invalide, API indisponible) fait échouer le workflow : GitHub e
 
 ## Ajouter un club
 
-1. Copier `clubs/foxes.json` en `clubs/<club>.json` et l'adapter (code club, adversaires,
-   saison, correspondances de tarifs et de zones, mots-clés du club).
-2. Ajouter les secrets `INFOMANIAK_API_KEY_<CLUB>`, `INFOMANIAK_TOKEN_<CLUB>` et
-   `BREVO_API_KEY_<CLUB>`.
-3. Ajouter `<club>` dans `sync.yml` : liste `options` du lancement manuel et liste `club` de
-   la matrice.
-4. Faire un `test` puis un `dry-run` avant toute synchro réelle.
+Guide pas à pas, avec checklist : [`docs/REPLICATION.md`](docs/REPLICATION.md). En résumé :
+
+1. Secrets `INFOMANIAK_API_KEY_<CLUB>`, `INFOMANIAK_TOKEN_<CLUB>` et `BREVO_API_KEY_<CLUB>`.
+2. `clubs/<club>.json` copié de `clubs/foxes.json` et adapté (code club, `club_keywords`,
+   saison, adversaires, tarifs et zones) ; `<club>` ajouté aux `options` du lancement manuel
+   dans `sync.yml`.
+3. Attributs catégorie `TICKET_STATUT`, `CATEGORIE_PLACE`, `CATEGORIE_TARIF` créés dans Brevo.
+4. `test`, `schema`, puis `dry-run` jusqu'à un rapport propre, puis `sync`.
+5. Après contrôle dans Brevo : `<club>` ajouté à la matrice de `sync.yml` (passages automatiques).
 
 ## Développement
 
