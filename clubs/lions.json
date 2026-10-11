@@ -58,20 +58,29 @@
   "ticket_attributes": {
     "tarif_mapping": {
       "offert": "Gratuit",
-      "non membre": "Plein",
-      "membre": "Membre",
-      "famille": "Famille",
+      "invitation": "Gratuit",
       "vip": "VIP",
+      "sponsor": "VIP",
       "etudiant": "Réduit",
       "avs": "Réduit",
+      "chomage": "Réduit",
+      "chom": "Réduit",
       "enfant": "Enfant",
+      "ados": "Enfant",
       "jeune": "Enfant",
-      "moins": "Enfant",
+      "plein": "Plein",
       "adulte": "Plein",
       "standard": "Plein"
     },
     "place_mapping": {
-      "vip": "VIP"
+      "business seat": "Business Seats",
+      "centrale": "Centrales",
+      "laterale": "Latérales",
+      "virage": "Virages",
+      "zone 1": "Zone 1",
+      "paradis": "Espace Paradis",
+      "courtside": "Courtside Family",
+      "florimont": "Lounge Florimont"
     }
   }
 }

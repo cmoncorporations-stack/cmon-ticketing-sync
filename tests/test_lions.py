@@ -127,3 +127,30 @@ def test_dry_run_report_lists_shops(monkeypatch, capsys):
         assert main(["--club", CLUB, "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert '"PRINCIPALE"' in out and '"VIP"' in out and "vip-key" not in out
+
+
+# Zones and tariffs returned by the Lions shops (schema run of 11.10.2026).
+LIONS_TARIFFS = {
+    "Plein tarif": "Plein", "Adulte": "Plein", "PASS EUROPE | ADULTE | LATERALES": "Plein",
+    "Abonnement Adulte | Saison 26 - 27": "Plein", "Adultes (18+)": "Plein",
+    "Enfant (-16 ans)": "Enfant", "Tarif enfant (10 ans et moins)": "Enfant",
+    "Tarif Ados (11 - 17 ans)": "Enfant", "Enfants (11-17 ans)": "Enfant",
+    "Tarif AVS/AI": "Réduit", "Etudiant": "Réduit", "AVS / AI / CHOMAGE": "Réduit",
+    "EUROPE | AVS/AI/CHÔM | LATÉRALES": "Réduit",
+    "Abonnement Sponsor VIP": "VIP", "Abonnement Sponsors - Saison 26 - 27": "VIP",
+}
+LIONS_ZONES = {
+    "BUSINESS SEAT": "Business Seats", "BUSINESS SEATS": "Business Seats", "LATÉRALES": "Latérales",
+    "CENTRALES": "Centrales", "VIRAGES": "Virages", "Zone 1": "Zone 1",
+    "Espace Paradis": "Espace Paradis", "Courtside Family": "Courtside Family",
+    "Lounge Florimont": "Lounge Florimont",
+}
+
+
+@pytest.mark.parametrize("mapping_key,labels", [("tarif_mapping", LIONS_TARIFFS), ("place_mapping", LIONS_ZONES)])
+def test_every_lions_tariff_and_zone_has_a_brevo_option(mapping_key, labels):
+    from ticketing_sync.sync import CategoryWriter
+
+    writer = CategoryWriter([], "X", load_club_config(CLUB)["ticket_attributes"][mapping_key])
+    for label, option in labels.items():
+        assert writer._rule(label) == option, label
