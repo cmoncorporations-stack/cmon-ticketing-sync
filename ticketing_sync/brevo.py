@@ -13,6 +13,11 @@ class BrevoRateLimitError(Exception):
     pass
 
 
+def is_invalid_phone_error(error: Exception) -> bool:
+    """Brevo's 400 for a phone number it does not accept as SMS."""
+    return "invalid phone" in str(error).lower()
+
+
 class BrevoService:
     BASE_URL = "https://api.brevo.com/v3"
 
@@ -405,10 +410,20 @@ class BrevoService:
         ``POST /contacts`` instead (``processId`` is then ``None``).
         """
         if not list_ids:
+            phones_dropped = 0
             for contact in contacts:
-                self.upsert_contact(contact.get("attributes") or {}, email=contact.get("email"))
+                attributes = contact.get("attributes") or {}
+                try:
+                    self.upsert_contact(attributes, email=contact.get("email"))
+                except BrevoAPIError as e:
+                    # A number Brevo rejects must not block the contact: write it without SMS.
+                    if not (is_invalid_phone_error(e) and contact.get("email") and "SMS" in attributes):
+                        raise
+                    self.upsert_contact({k: v for k, v in attributes.items() if k != "SMS"},
+                                        email=contact.get("email"))
+                    phones_dropped += 1
                 time.sleep(0.05)
-            return {"processId": None, "upserted": len(contacts)}
+            return {"processId": None, "upserted": len(contacts), "invalid_phones": phones_dropped}
         data: Dict[str, Any] = {
             "jsonBody": contacts,
             "updateExistingContacts": update_existing,

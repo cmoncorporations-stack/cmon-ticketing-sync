@@ -8,7 +8,9 @@
   },
   "infomaniak": {
     "passes_path": "/passes",
-    "extra_shops": ["VIP"]
+    "extra_shops": [
+      "VIP"
+    ]
   },
   "brevo": {
     "list_ids": [],
@@ -30,7 +32,9 @@
   "event_lists": {
     "club_code": "LIONS",
     "season": "2026-2027",
-    "club_keywords": ["lions", "geneve"],
+    "club_keywords": [
+      "lions de geneve"
+    ],
     "opponent_codes": {
       "Pully Lausanne Foxes": "FOXES",
       "Fribourg Olympic": "FOB",
@@ -42,27 +46,47 @@
       "Neuchâtel": "UNI",
       "Massagno": "MAS",
       "Vevey": "VEV",
-      "Swiss Central": "SCB"
+      "Swiss Central": "SCB",
+      "Benfica": "SLB",
+      "Denizli": "DEN",
+      "Bakken Bears": "BAK",
+      "Prievidza": "PRI",
+      "Landau": "LAN"
     },
-    "event_types": {}
+    "event_types": {},
+    "folders": {
+      "match": "Cmon Sports | Billetterie 26-27",
+      "camp": "Cmon Sports | Billetterie 26-27",
+      "autre": "Cmon Sports | Billetterie 26-27",
+      "abonnement": "Abonnement 26-27"
+    }
   },
   "ticket_attributes": {
     "tarif_mapping": {
       "offert": "Gratuit",
-      "non membre": "Plein",
-      "membre": "Membre",
-      "famille": "Famille",
+      "invitation": "Gratuit",
       "vip": "VIP",
+      "sponsor": "VIP",
       "etudiant": "Réduit",
       "avs": "Réduit",
+      "chomage": "Réduit",
+      "chom": "Réduit",
       "enfant": "Enfant",
+      "ados": "Enfant",
       "jeune": "Enfant",
-      "moins": "Enfant",
+      "plein": "Plein",
       "adulte": "Plein",
       "standard": "Plein"
     },
     "place_mapping": {
-      "vip": "VIP"
+      "business seat": "Business Seats",
+      "centrale": "Centrales",
+      "laterale": "Latérales",
+      "virage": "Virages",
+      "zone 1": "Zone 1",
+      "paradis": "Espace Paradis",
+      "courtside": "Courtside Family",
+      "florimont": "Lounge Florimont"
     }
   }
 }

@@ -14,18 +14,26 @@ from ticketing_sync.infomaniak import InfomaniakTicketingService, MultiShopTicke
 
 CLUB = "clubs/lions.json"
 
+# Real names from the Lions shops (dry run of 11.10.2026).
 LIONS_EVENT_NAMES = {
-    "Lions de Genève vs Pully Lausanne Foxes - 18.10.26 - championnat SBL": ("match", "FOXES"),
-    "Lions de Genève vs Fribourg Olympic - 24.10.26 - championnat SBL": ("match", "FOB"),
-    "Lions de Genève vs BBC Monthey-Chablais - 31.10.26 - championnat SBL": ("match", "MON"),
-    "Lions de Genève vs Union Neuchâtel Basket - 07.11.26 - championnat SBL": ("match", "UNI"),
-    "Lions de Genève vs Spinelli Massagno - 14.11.26 - championnat SBL": ("match", "MAS"),
-    "Lions de Genève vs Starwings Basket - 21.11.26 - championnat SBL": ("match", "SWB"),
-    "Lions de Genève vs Vevey Riviera Basket - 28.11.26 - championnat SBL": ("match", "VEV"),
-    "Lions de Genève vs Swiss Central Basketball - 05.12.26 - championnat SBL": ("match", "SCB"),
-    "Lions vs Lugano Tigers - 12.12.26": ("match", "LUG"),
-    "Abonnement saison 2026-2027 - Lions de Genève": ("abonnement", None),
-    "Soirée partenaires Lions vs Fribourg Olympic": ("partenaire", None),
+    "Lions de Genève vs. Fribourg Olympic | SBL 2026-27": ("match", "FOB"),
+    "Lions de Genève vs. Pully Lausanne Foxes | SBL 2026-27": ("match", "FOXES"),
+    "Lions de Genève vs. GC Zürich | SBL 2026-27": ("match", "GCZ"),
+    "Lions de Genève vs. Union Neuchâtel | SBL 2026-27": ("match", "UNI"),
+    "Lions de Genève vs. Spinelli Massagno | SBL 2026-27": ("match", "MAS"),
+    "Lions de Genève vs. Lugano Tigers | SBL 2026-27": ("match", "LUG"),
+    "Lions de Genève vs. BBC Nyon | SBL 2026-27": ("match", "NYO"),
+    "Lions de Genève vs. SL Benfica | FIBA Europe Cup": ("match", "SLB"),
+    "Lions de Genève vs. Yukatel Denizli Basket | FIBA Europe Cup": ("match", "DEN"),
+    "Lions de Genève vs. Bakken Bears | FIBA Europe Cup": ("match", "BAK"),
+    "Lions de Genève vs. BC Prievidza | FIBA Europe Cup": ("match", "PRI"),
+    "Lions de Genève vs. Landau Lions | FIBA Europe Cup": ("match", "LAN"),
+    "VIP | GC Zürich  vs.  Lions de Genève | SBL 2026-27": ("match", "GCZ"),
+    "VIP | A++ Massagno vs. Lions de Genève | SBL 2026-27": ("match", "MAS"),
+    "VIP | Lugano Tigers Lions vs. Lions de Genève | SBL 2026-27": ("match", "LUG"),
+    "Abonnement Adulte | Saison 2026 - 2027": ("abonnement", None),
+    "Pass Europe 5 matchs | Adulte | Centrales": ("abonnement", None),
+    "Abonnement VIP – Domaine du Paradis": ("abonnement", None),
 }
 
 
@@ -43,6 +51,9 @@ def test_lions_config_classifies_events_and_codes_opponents():
 
 def test_lions_matches_need_club_keywords():
     assert classify_event("Lions de Genève vs Fribourg Olympic", {}) == "autre"
+    # "lions" alone would also match opponents named Lions (Landau Lions).
+    assert classify_event("Lions de Genève vs. Landau Lions | FIBA Europe Cup",
+                          {"club_keywords": ["lions"]}) == "autre"
 
 
 def _shop(orders, events=(), passes=()):
@@ -116,3 +127,43 @@ def test_dry_run_report_lists_shops(monkeypatch, capsys):
         assert main(["--club", CLUB, "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert '"PRINCIPALE"' in out and '"VIP"' in out and "vip-key" not in out
+
+
+# Zones and tariffs returned by the Lions shops (schema run of 11.10.2026).
+LIONS_TARIFFS = {
+    "Plein tarif": "Plein", "Adulte": "Plein", "PASS EUROPE | ADULTE | LATERALES": "Plein",
+    "Abonnement Adulte | Saison 26 - 27": "Plein", "Adultes (18+)": "Plein",
+    "Enfant (-16 ans)": "Enfant", "Tarif enfant (10 ans et moins)": "Enfant",
+    "Tarif Ados (11 - 17 ans)": "Enfant", "Enfants (11-17 ans)": "Enfant",
+    "Tarif AVS/AI": "Réduit", "Etudiant": "Réduit", "AVS / AI / CHOMAGE": "Réduit",
+    "EUROPE | AVS/AI/CHÔM | LATÉRALES": "Réduit",
+    "Abonnement Sponsor VIP": "VIP", "Abonnement Sponsors - Saison 26 - 27": "VIP",
+}
+LIONS_ZONES = {
+    "BUSINESS SEAT": "Business Seats", "BUSINESS SEATS": "Business Seats", "LATÉRALES": "Latérales",
+    "CENTRALES": "Centrales", "VIRAGES": "Virages", "Zone 1": "Zone 1",
+    "Espace Paradis": "Espace Paradis", "Courtside Family": "Courtside Family",
+    "Lounge Florimont": "Lounge Florimont",
+}
+
+
+@pytest.mark.parametrize("mapping_key,labels", [("tarif_mapping", LIONS_TARIFFS), ("place_mapping", LIONS_ZONES)])
+def test_every_lions_tariff_and_zone_has_a_brevo_option(mapping_key, labels):
+    from ticketing_sync.sync import CategoryWriter
+
+    writer = CategoryWriter([], "X", load_club_config(CLUB)["ticket_attributes"][mapping_key])
+    for label, option in labels.items():
+        assert writer._rule(label) == option, label
+
+
+def test_lions_lists_go_to_existing_brevo_folders():
+    from ticketing_sync.event_lists import find_folder
+
+    brevo_folders = [{"id": 195, "name": "Cmon Sports | Billetterie 26-27"}, {"id": 192, "name": "Abonnement 26-27"},
+                     {"id": 136, "name": "Billetterie 25-26"}, {"id": 122, "name": "Abonnement 25-26"},
+                     {"id": 60, "name": "Members & Staff"}, {"id": 56, "name": "Business engagement"}]
+    folders = load_club_config(CLUB)["event_lists"]["folders"]
+    assert find_folder(brevo_folders, folders["match"])["id"] == 195
+    assert find_folder(brevo_folders, folders["abonnement"])["id"] == 192
+    assert find_folder(brevo_folders, "Business Engagement")["id"] == 56
+    assert find_folder(brevo_folders, "Members & Staff")["id"] == 60

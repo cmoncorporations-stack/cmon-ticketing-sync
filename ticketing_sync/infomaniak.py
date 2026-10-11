@@ -383,7 +383,7 @@ def assemble_orders(orders: Iterable[Dict[str, Any]],
                 "order_id": order_id,
                 "date": _first(order, "date") or ticket.get("order_date"),
                 "status": order.get("status"),
-                "customer": order.get("customer") or ticket.get("customer") or {},
+                "customer": _merge_customer(order.get("customer"), ticket.get("customer")),
                 "event_id": ticket.get("event_id"),
                 "event_name": ticket.get("event_name"),
                 "event_date": ticket.get("event_date"),
@@ -398,6 +398,15 @@ def assemble_orders(orders: Iterable[Dict[str, Any]],
         entry["tickets"].append(line)
         entry["amount"] += _number(ticket.get("amount")) or 0.0
     return list(groups.values())
+
+
+def _merge_customer(order_customer: Optional[Dict[str, Any]],
+                    ticket_customer: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The order's customer, with fields it leaves empty (often the name)
+    taken from the ticket's customer."""
+    merged = {k: v for k, v in (ticket_customer or {}).items() if v not in (None, "")}
+    merged.update({k: v for k, v in (order_customer or {}).items() if v not in (None, "")})
+    return merged
 
 
 def _same_person(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
