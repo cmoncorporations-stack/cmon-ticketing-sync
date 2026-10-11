@@ -761,7 +761,7 @@ def test_import_without_list_upserts_each_contact():
     with patch.object(svc, "_make_request", return_value={}) as req, \
             patch("ticketing_sync.brevo.time.sleep"):
         result = svc.import_contacts(contacts)
-    assert result == {"processId": None, "upserted": 2}
+    assert result == {"processId": None, "upserted": 2, "invalid_phones": 0}
     assert [c.args[:2] for c in req.call_args_list] == [("POST", "/contacts")] * 2
     assert req.call_args_list[0].kwargs["data"] == {"attributes": {"PRENOM": "A"}, "updateEnabled": True,
                                                     "email": "a@x.ch"}
@@ -774,3 +774,56 @@ def test_import_with_list_uses_bulk_import():
         assert svc.import_contacts([{"email": "a@x.ch", "attributes": {}}], list_ids=[3]) == {"processId": 5}
     assert req.call_args.args[:2] == ("POST", "/contacts/import")
     assert req.call_args.kwargs["data"]["listIds"] == [3]
+
+
+def test_rejected_phone_is_dropped_not_blocking():
+    """Lions first sync stopped on 'Invalid phone number' (11.10.2026)."""
+    from ticketing_sync.brevo import BrevoAPIError, BrevoService
+    svc = BrevoService("k")
+    contacts = [{"email": "a@x.ch", "attributes": {"PRENOM": "A", "SMS": "+999123"}},
+                {"email": "b@x.ch", "attributes": {"SMS": "+41791234567"}}]
+
+    def answer(method, endpoint, data=None, **kw):
+        if data["attributes"].get("SMS") == "+999123":
+            raise BrevoAPIError("Brevo API error (400): Invalid phone number")
+        return {}
+
+    with patch.object(svc, "_make_request", side_effect=answer) as req, \
+            patch("ticketing_sync.brevo.time.sleep"):
+        result = svc.import_contacts(contacts)
+    assert result["invalid_phones"] == 1
+    sent = [c.kwargs["data"] for c in req.call_args_list]
+    assert {"attributes": {"PRENOM": "A"}, "updateEnabled": True, "email": "a@x.ch"} in sent
+    assert sent[-1]["attributes"] == {"SMS": "+41791234567"}
+
+
+def test_phone_only_buyer_with_rejected_number_is_skipped():
+    from ticketing_sync.brevo import BrevoAPIError
+    ticketing = MagicMock()
+    ticketing.get_orders.return_value = [
+        {"id": 1, "status": "paid", "customer": {"phone": "079 123 45 67"}, "event_name": "Foxes vs Nyon"},
+        {"id": 2, "status": "paid", "customer": {"phone": "078 765 43 21"}, "event_name": "Foxes vs Nyon"},
+    ]
+    ticketing.get_events.return_value = []
+    brevo = _brevo()
+    brevo.get_contact_index.return_value = {}
+    brevo.get_contact_attributes.return_value = []
+    brevo.ensure_contact_attributes.return_value = []
+
+    def upsert(attributes, list_ids=None, email=None):
+        if attributes.get("SMS") == "+41791234567":
+            raise BrevoAPIError("Brevo API error (400): Invalid phone number")
+        return {}
+
+    brevo.upsert_contact.side_effect = upsert
+    result = sync_infomaniak_to_brevo(ticketing, brevo)
+    assert result["invalid_phones"] == 1 and result["phone_only_upserted"] == 1
+    assert any("refusé" in w for w in result["warnings"])
+
+
+def test_other_brevo_errors_still_stop_the_sync():
+    from ticketing_sync.brevo import BrevoAPIError, BrevoService
+    svc = BrevoService("k")
+    with patch.object(svc, "_make_request", side_effect=BrevoAPIError("Brevo API error (401): Key not found")), \
+            patch("ticketing_sync.brevo.time.sleep"), pytest.raises(BrevoAPIError):
+        svc.import_contacts([{"email": "a@x.ch", "attributes": {"SMS": "+41791234567"}}])
