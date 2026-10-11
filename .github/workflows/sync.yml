@@ -39,12 +39,14 @@ jobs:
     env:
       # Secrets du dépôt nommés INFOMANIAK_API_KEY_<CLUB>, INFOMANIAK_TOKEN_<CLUB>
       # et BREVO_API_KEY_<CLUB>.
-      INFOMANIAK_API_KEY: ${{ secrets[format('INFOMANIAK_API_KEY_{0}', matrix.club)] }}
+      # Club à deux boutiques : la clé de la boutique fan peut aussi s'appeler
+      # INFOMANIAK_FAN_KEY_<CLUB>.
+      INFOMANIAK_API_KEY: ${{ secrets[format('INFOMANIAK_API_KEY_{0}', matrix.club)] || secrets[format('INFOMANIAK_FAN_KEY_{0}', matrix.club)] }}
       INFOMANIAK_TOKEN: ${{ secrets[format('INFOMANIAK_TOKEN_{0}', matrix.club)] }}
       BREVO_API_KEY: ${{ secrets[format('BREVO_API_KEY_{0}', matrix.club)] }}
       # Seconde boutique (billetterie VIP), lue seulement si le club la liste
       # dans infomaniak.extra_shops. Jeton facultatif : à défaut, celui du club.
-      INFOMANIAK_API_KEY_VIP: ${{ secrets[format('INFOMANIAK_API_KEY_{0}_VIP', matrix.club)] }}
+      INFOMANIAK_API_KEY_VIP: ${{ secrets[format('INFOMANIAK_API_KEY_{0}_VIP', matrix.club)] || secrets[format('INFOMANIAK_VIP_KEY_{0}', matrix.club)] }}
       INFOMANIAK_TOKEN_VIP: ${{ secrets[format('INFOMANIAK_TOKEN_{0}_VIP', matrix.club)] }}
     steps:
       - uses: actions/checkout@v5

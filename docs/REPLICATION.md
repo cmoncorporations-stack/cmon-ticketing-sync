@@ -73,7 +73,9 @@ sont lues ensemble, pour que les totaux, `TICKET_STATUT` et `DERNIER_MATCH` couv
 commandes. Ne jamais faire une synchro par boutique : la seconde écraserait les totaux de la
 première pour les contacts présents dans les deux.
 - config : `"infomaniak": {"extra_shops": ["VIP"]}` ;
-- secret `INFOMANIAK_API_KEY_<CLUB>_VIP` (clé de la boutique VIP) ;
+- secret `INFOMANIAK_API_KEY_<CLUB>_VIP` (clé de la boutique VIP) ; noms acceptés aussi :
+  `INFOMANIAK_FAN_KEY_<CLUB>` pour la boutique principale et `INFOMANIAK_VIP_KEY_<CLUB>` pour la VIP
+  (noms utilisés par les Lions) ;
 - secret `INFOMANIAK_TOKEN_<CLUB>_VIP` seulement si la boutique VIP dépend d'un autre compte
   Manager (sinon le jeton du club est utilisé) ;
 - une commande ou un abonnement renvoyé par les deux boutiques n'est compté qu'une fois

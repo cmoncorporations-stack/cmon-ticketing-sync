@@ -1,9 +1,9 @@
 {
   "club": "Lions de Genève",
   "secrets": {
-    "infomaniak": "INFOMANIAK_API_KEY_LIONS",
+    "infomaniak": "INFOMANIAK_FAN_KEY_LIONS",
     "infomaniak_token": "INFOMANIAK_TOKEN_LIONS",
-    "infomaniak_vip": "INFOMANIAK_API_KEY_LIONS_VIP",
+    "infomaniak_vip": "INFOMANIAK_VIP_KEY_LIONS",
     "brevo": "BREVO_API_KEY_LIONS"
   },
   "infomaniak": {
