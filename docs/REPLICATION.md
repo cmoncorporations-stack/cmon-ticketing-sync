@@ -68,6 +68,17 @@ L'API Infomaniak demande **deux** clés. La clé boutique seule ne lit rien, mê
 
 `<CLUB>` = le nom du fichier de config en majuscules (`clubs/lions.json` → `INFOMANIAK_API_KEY_LIONS`).
 
+**Organisation avec deux boutiques** (ex. Lions : billetterie fan et billetterie VIP) : les deux
+sont lues ensemble, pour que les totaux, `TICKET_STATUT` et `DERNIER_MATCH` couvrent toutes les
+commandes. Ne jamais faire une synchro par boutique : la seconde écraserait les totaux de la
+première pour les contacts présents dans les deux.
+- config : `"infomaniak": {"extra_shops": ["VIP"]}` ;
+- secret `INFOMANIAK_API_KEY_<CLUB>_VIP` (clé de la boutique VIP) ;
+- secret `INFOMANIAK_TOKEN_<CLUB>_VIP` seulement si la boutique VIP dépend d'un autre compte
+  Manager (sinon le jeton du club est utilisé) ;
+- une commande ou un abonnement renvoyé par les deux boutiques n'est compté qu'une fois
+  (`duplicates_skipped` dans le rapport) ; `test`, `probe` et `schema` affichent chaque boutique.
+
 Ne jamais coller une clé dans un fichier, un ticket ou un message. Si c'est arrivé, la régénérer et mettre à jour le secret.
 
 ## Étape 2 : préparer Brevo
@@ -228,7 +239,7 @@ Tous ont été réglés, dans le code ou dans la configuration des Foxes. Ils re
 - [ ] Clé boutique Infomaniak (droits de vente) créée
 - [ ] Jeton API Manager créé (compte avec accès billetterie)
 - [ ] Clé API Brevo créée, filtre IP désactivé pour elle
-- [ ] Secrets `INFOMANIAK_API_KEY_<CLUB>`, `INFOMANIAK_TOKEN_<CLUB>`, `BREVO_API_KEY_<CLUB>` ajoutés
+- [ ] Secrets `INFOMANIAK_API_KEY_<CLUB>`, `INFOMANIAK_TOKEN_<CLUB>`, `BREVO_API_KEY_<CLUB>` ajoutés (+ `INFOMANIAK_API_KEY_<CLUB>_VIP` si seconde boutique)
 - [ ] `clubs/<club>.json` créé (club_code, club_keywords, saison, adversaires, types d'événements)
 - [ ] Club ajouté aux `options` du lancement manuel dans `sync.yml`
 - [ ] Mode `test` réussi

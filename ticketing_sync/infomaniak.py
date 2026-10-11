@@ -773,3 +773,71 @@ def aggregate_buyers(orders: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, An
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class MultiShopTicketing:
+    """Several Infomaniak shops of one club (e.g. fan and VIP ticketing) read
+    as one, so buyer totals and statuses cover every shop: one sync per shop
+    would overwrite each contact's totals with the last shop's figures.
+
+    Orders and passes returned by more than one shop (the manager token may
+    see the whole organisation) are counted once.
+    """
+
+    def __init__(self, shops: Dict[str, InfomaniakTicketingService]):
+        if not shops:
+            raise ValueError("At least one Infomaniak shop is required")
+        self.shops = shops
+        first = next(iter(shops.values()))
+        self.base_url = first.base_url
+        self.passes_path = next((s.passes_path for s in shops.values() if s.passes_path), None)
+        self.duplicates_skipped = 0
+
+    @property
+    def auth(self) -> str:
+        return ", ".join(f"{name}: {shop.auth}" for name, shop in self.shops.items())
+
+    def _merge(self, items_per_shop: Iterable[List[Dict[str, Any]]], key) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        seen = set()
+        for items in items_per_shop:
+            for item in items:
+                k = key(item)
+                if k is not None and k in seen:
+                    self.duplicates_skipped += 1
+                    continue
+                seen.add(k)
+                merged.append(item)
+        return merged
+
+    def test_connection(self) -> Dict[str, Any]:
+        results = {name: shop.test_connection() for name, shop in self.shops.items()}
+        return {"success": all(r["success"] for r in results.values()), "shops": results}
+
+    def probe_auth(self) -> List[Dict[str, Any]]:
+        return [{"shop": name, **r} for name, shop in self.shops.items() for r in shop.probe_auth()]
+
+    def schema_samples(self) -> Dict[str, Any]:
+        return {"shops": {name: shop.schema_samples() for name, shop in self.shops.items()}}
+
+    def get_events(self) -> List[Dict[str, Any]]:
+        def key(event):
+            event_id = _first(event, "event_id", "id")
+            return None if event_id is None else str(event_id)
+        return self._merge((shop.get_events() for shop in self.shops.values()), key)
+
+    def get_orders(self, since: Optional[str] = None, max_orders: int = 100000) -> List[Dict[str, Any]]:
+        def key(order):
+            return None if order.get("order_id") is None else ("order", str(order["order_id"]),
+                                                               str(order.get("event_id")))
+        return self._merge((shop.get_orders(since=since, max_orders=max_orders)
+                            for shop in self.shops.values()), key)[:max_orders]
+
+    def get_passes(self, max_passes: int = 100000) -> List[Dict[str, Any]]:
+        def key(item):
+            if item.get("code"):
+                return ("pass", str(item["code"]))
+            return None if item.get("order_id") is None else ("pass", str(item["order_id"]),
+                                                              str(item.get("pass_type")))
+        return self._merge((shop.get_passes(max_passes=max_passes)
+                            for shop in self.shops.values() if shop.passes_path), key)[:max_passes]

@@ -1,0 +1,68 @@
+{
+  "club": "Lions de Genève",
+  "secrets": {
+    "infomaniak": "INFOMANIAK_API_KEY_LIONS",
+    "infomaniak_token": "INFOMANIAK_TOKEN_LIONS",
+    "infomaniak_vip": "INFOMANIAK_API_KEY_LIONS_VIP",
+    "brevo": "BREVO_API_KEY_LIONS"
+  },
+  "infomaniak": {
+    "passes_path": "/passes",
+    "extra_shops": ["VIP"]
+  },
+  "brevo": {
+    "list_ids": [],
+    "only_optin": false,
+    "acquisition_attribute": "SOURCE_ACQUISITION",
+    "acquisition_value": "Billetterie",
+    "partner_acquisition_value": "Business Engagement",
+    "optin_attribute": "OPT_IN",
+    "optin_value": "YES"
+  },
+  "schedule": {
+    "offset_hours": 24,
+    "lookback_minutes": 90,
+    "timezone": "Europe/Zurich",
+    "sync_event_types": [
+      "match"
+    ]
+  },
+  "event_lists": {
+    "club_code": "LIONS",
+    "season": "2026-2027",
+    "club_keywords": ["lions", "geneve"],
+    "opponent_codes": {
+      "Pully Lausanne Foxes": "FOXES",
+      "Fribourg Olympic": "FOB",
+      "GC Zürich": "GCZ",
+      "Monthey": "MON",
+      "Nyon": "NYO",
+      "Starwings": "SWB",
+      "Lugano": "LUG",
+      "Neuchâtel": "UNI",
+      "Massagno": "MAS",
+      "Vevey": "VEV",
+      "Swiss Central": "SCB"
+    },
+    "event_types": {}
+  },
+  "ticket_attributes": {
+    "tarif_mapping": {
+      "offert": "Gratuit",
+      "non membre": "Plein",
+      "membre": "Membre",
+      "famille": "Famille",
+      "vip": "VIP",
+      "etudiant": "Réduit",
+      "avs": "Réduit",
+      "enfant": "Enfant",
+      "jeune": "Enfant",
+      "moins": "Enfant",
+      "adulte": "Plein",
+      "standard": "Plein"
+    },
+    "place_mapping": {
+      "vip": "VIP"
+    }
+  }
+}
