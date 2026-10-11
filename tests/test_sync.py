@@ -838,3 +838,13 @@ def test_other_brevo_errors_still_stop_the_sync():
     with patch.object(svc, "_make_request", side_effect=BrevoAPIError("Brevo API error (401): Key not found")), \
             patch("ticketing_sync.brevo.time.sleep"), pytest.raises(BrevoAPIError):
         svc.import_contacts([{"email": "a@x.ch", "attributes": {"SMS": "+41791234567"}}])
+
+
+def test_order_without_name_takes_it_from_the_ticket():
+    from ticketing_sync.infomaniak import assemble_orders
+    orders = [{"order_id": 7, "status": "paid", "date": "2026-10-01",
+               "customer": {"id": 1, "firstname": "", "lastname": None, "email": "fan@x.ch"}}]
+    tickets = [{"order_id": 7, "event_id": 3, "event_name": "Lions de Genève vs. Lugano Tigers", "status": "valid",
+                "customer": {"id": 1, "firstname": "Léa", "lastname": "Muller", "email": "fan@x.ch"}}]
+    entry, = assemble_orders(orders, tickets)
+    assert entry["customer"] == {"id": 1, "firstname": "Léa", "lastname": "Muller", "email": "fan@x.ch"}
