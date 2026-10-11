@@ -126,6 +126,17 @@ def test_sync_uses_french_name_attributes():
     assert "FIRSTNAME" not in contact["attributes"]
 
 
+def test_sync_writes_both_name_attributes_when_brevo_has_both():
+    """Lions Brevo has FIRSTNAME/LASTNAME and PRENOM/NOM and shows PRENOM/NOM."""
+    ticketing = MagicMock()
+    ticketing.get_orders.return_value = ORDERS[:1]
+    brevo = _brevo(existing_attrs=("FIRSTNAME", "LASTNAME", "PRENOM", "NOM"))
+    sync_infomaniak_to_brevo(ticketing, brevo)
+    contact = brevo.import_contacts.call_args.args[0][0]
+    assert contact["attributes"]["PRENOM"] == contact["attributes"]["FIRSTNAME"] == "Alex"
+    assert contact["attributes"]["NOM"] == contact["attributes"]["LASTNAME"] == "Muller"
+
+
 def test_sync_only_optin_and_dry_run():
     ticketing = MagicMock()
     ticketing.get_orders.return_value = ORDERS

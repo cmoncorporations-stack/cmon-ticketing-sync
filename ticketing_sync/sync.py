@@ -115,10 +115,12 @@ def _brevo_date(value: Optional[str]) -> Optional[str]:
     return candidate if candidate[4] == "-" and candidate[7] == "-" else None
 
 
-def _name_attributes(existing: set) -> Dict[str, str]:
-    # French-language Brevo accounts ship PRENOM/NOM instead of FIRSTNAME/LASTNAME.
-    first = "PRENOM" if "PRENOM" in existing and "FIRSTNAME" not in existing else "FIRSTNAME"
-    last = "NOM" if "NOM" in existing and "LASTNAME" not in existing else "LASTNAME"
+def _name_attributes(existing: set) -> Dict[str, List[str]]:
+    """Name attributes to write. French-language Brevo accounts ship
+    PRENOM/NOM; some (Lions) have both PRENOM/NOM and FIRSTNAME/LASTNAME and
+    show PRENOM/NOM: every one present is written."""
+    first = [a for a in ("FIRSTNAME", "PRENOM") if a in existing] or ["FIRSTNAME"]
+    last = [a for a in ("LASTNAME", "NOM") if a in existing] or ["LASTNAME"]
     return {"first": first, "last": last}
 
 
@@ -384,17 +386,16 @@ class CategoryWriter:
         return []
 
 
-def build_brevo_contact(buyer: Dict[str, Any], name_attrs: Dict[str, str]) -> Dict[str, Any]:
+def build_brevo_contact(buyer: Dict[str, Any], name_attrs: Dict[str, List[str]]) -> Dict[str, Any]:
     attributes: Dict[str, Any] = {
         "TICKETING_SOURCE": "Infomaniak",
         "TICKETING_ORDERS": buyer["orders_count"],
         "TICKETING_TICKETS": buyer["tickets_count"],
         "TICKETING_TOTAL_SPENT": buyer["total_spent"],
     }
-    if buyer.get("first_name"):
-        attributes[name_attrs["first"]] = buyer["first_name"]
-    if buyer.get("last_name"):
-        attributes[name_attrs["last"]] = buyer["last_name"]
+    for key, field in (("first", "first_name"), ("last", "last_name")):
+        if buyer.get(field):
+            attributes.update({name: buyer[field] for name in name_attrs[key]})
     first_order = _brevo_date(buyer.get("first_order_date"))
     if first_order:
         attributes["TICKETING_FIRST_ORDER"] = first_order
@@ -587,6 +588,9 @@ def sync_infomaniak_to_brevo(ticketing, brevo, list_ids: Optional[List[int]] = N
 
     attribute_defs = brevo.get_contact_attributes()
     name_attrs = _name_attributes({a.get("name") for a in attribute_defs})
+    result["name_attributes"] = name_attrs["first"] + name_attrs["last"]
+    named = sum(1 for b in selected if b.get("first_name") or b.get("last_name"))
+    result["buyers_with_name"] = named
 
     # Guideline step 6: SOURCE_ACQUISITION + OPT_IN = YES on every contact
     # whose SOURCE_ACQUISITION is empty. The source follows the buyer's first
