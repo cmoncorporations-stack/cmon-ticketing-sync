@@ -12,6 +12,11 @@ API keys come from the environment, never from the config file:
 or ``INFOMANIAK_CREDENTIAL`` from the /login method) and ``BREVO_API_KEY``
 (optional for ``--dry-run``: without it Brevo is not read either).
 
+A club with several Infomaniak shops (e.g. fan and VIP ticketing) lists the
+extra ones in ``infomaniak.extra_shops`` (``["VIP"]``); each one's key comes
+from ``INFOMANIAK_API_KEY_<SHOP>`` and its token from ``INFOMANIAK_TOKEN_<SHOP>``
+(default: the main token). All shops are synced together.
+
 Exit codes: 0 success (or nothing due), 1 configuration / API error.
 The printed report never contains contact data (emails, phones).
 """
@@ -27,7 +32,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ticketing_sync.brevo import BrevoAPIError, BrevoService
-from ticketing_sync.infomaniak import InfomaniakTicketingAPIError, InfomaniakTicketingService
+from ticketing_sync.infomaniak import (
+    InfomaniakTicketingAPIError,
+    InfomaniakTicketingService,
+    MultiShopTicketing,
+)
 from ticketing_sync.schedule import due_runs
 from ticketing_sync.sync import (
     DEFAULT_ACQUISITION_ATTRIBUTE,
@@ -67,6 +76,29 @@ def sync_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_ticketing(config: Dict[str, Any]):
+    """Infomaniak client of the club: one shop, or every shop of
+    ``infomaniak.extra_shops`` merged. Raises ``ValueError`` on a missing key."""
+    infomaniak = config.get("infomaniak") or {}
+    token = os.environ.get("INFOMANIAK_TOKEN")
+    credential = os.environ.get("INFOMANIAK_CREDENTIAL")
+    main_key = os.environ.get("INFOMANIAK_API_KEY")
+    if not main_key:
+        raise ValueError("INFOMANIAK_API_KEY manquant")
+    main_shop = InfomaniakTicketingService.from_config(main_key, infomaniak, token=token, credential=credential)
+    extra = [str(s).upper() for s in infomaniak.get("extra_shops") or []]
+    if not extra:
+        return main_shop
+    shops = {"PRINCIPALE": main_shop}
+    for name in extra:
+        key = os.environ.get(f"INFOMANIAK_API_KEY_{name}")
+        if not key:
+            raise ValueError(f"INFOMANIAK_API_KEY_{name} manquant (boutique {name})")
+        shops[name] = InfomaniakTicketingService.from_config(
+            key, infomaniak, token=os.environ.get(f"INFOMANIAK_TOKEN_{name}") or token, credential=credential)
+    return MultiShopTicketing(shops)
+
+
 def public_report(result: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in result.items() if k not in _PRIVATE_KEYS}
 
@@ -92,13 +124,11 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
         return 1
     club = config.get("club") or args.club
 
-    ticketing_key = os.environ.get("INFOMANIAK_API_KEY")
-    if not ticketing_key:
-        print("INFOMANIAK_API_KEY manquant", file=sys.stderr)
+    try:
+        ticketing = build_ticketing(config)
+    except ValueError as e:
+        print(e, file=sys.stderr)
         return 1
-    ticketing = InfomaniakTicketingService.from_config(
-        ticketing_key, config.get("infomaniak"),
-        token=os.environ.get("INFOMANIAK_TOKEN"), credential=os.environ.get("INFOMANIAK_CREDENTIAL"))
 
     if args.schema:
         print(json.dumps({"club": club, **ticketing.schema_samples()}, indent=1, ensure_ascii=False))
@@ -141,6 +171,8 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
         print(f"Synchronisation interrompue : {e}", file=sys.stderr)
         return 1
 
+    if isinstance(ticketing, MultiShopTicketing):
+        result = {**result, "shops": list(ticketing.shops), "duplicates_skipped": ticketing.duplicates_skipped}
     print(json.dumps({"club": club, "ran_at": datetime.now(timezone.utc).isoformat(), **public_report(result)},
                      indent=2, ensure_ascii=False))
     return 0

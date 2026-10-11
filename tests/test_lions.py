@@ -1,0 +1,118 @@
+"""Lions de Genève: club config, and the fan + VIP shops synced together.
+Event names follow the Infomaniak naming seen at the Foxes; check them
+against the first Lions dry run. HTTP fully mocked."""
+from __future__ import annotations
+
+from datetime import date
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from ticketing_sync.__main__ import build_ticketing, load_club_config, main, sync_kwargs
+from ticketing_sync.event_lists import build_list_name, classify_event
+from ticketing_sync.infomaniak import InfomaniakTicketingService, MultiShopTicketing
+
+CLUB = "clubs/lions.json"
+
+LIONS_EVENT_NAMES = {
+    "Lions de Genève vs Pully Lausanne Foxes - 18.10.26 - championnat SBL": ("match", "FOXES"),
+    "Lions de Genève vs Fribourg Olympic - 24.10.26 - championnat SBL": ("match", "FOB"),
+    "Lions de Genève vs BBC Monthey-Chablais - 31.10.26 - championnat SBL": ("match", "MON"),
+    "Lions de Genève vs Union Neuchâtel Basket - 07.11.26 - championnat SBL": ("match", "UNI"),
+    "Lions de Genève vs Spinelli Massagno - 14.11.26 - championnat SBL": ("match", "MAS"),
+    "Lions de Genève vs Starwings Basket - 21.11.26 - championnat SBL": ("match", "SWB"),
+    "Lions de Genève vs Vevey Riviera Basket - 28.11.26 - championnat SBL": ("match", "VEV"),
+    "Lions de Genève vs Swiss Central Basketball - 05.12.26 - championnat SBL": ("match", "SCB"),
+    "Lions vs Lugano Tigers - 12.12.26": ("match", "LUG"),
+    "Abonnement saison 2026-2027 - Lions de Genève": ("abonnement", None),
+    "Soirée partenaires Lions vs Fribourg Olympic": ("partenaire", None),
+}
+
+
+def test_lions_config_classifies_events_and_codes_opponents():
+    config = load_club_config(CLUB)
+    event_config = sync_kwargs(config)["event_lists"]
+    for name, (expected_type, expected_code) in LIONS_EVENT_NAMES.items():
+        assert classify_event(name, event_config) == expected_type, name
+        if expected_code:
+            list_name, warning = build_list_name("LIONS", name, date(2026, 10, 18), event_config["opponent_codes"],
+                                                 event_config["club_keywords"], "match")
+            assert warning is None, name
+            assert list_name == f"CMON-LIONS-{expected_code}-20261018", name
+
+
+def test_lions_matches_need_club_keywords():
+    assert classify_event("Lions de Genève vs Fribourg Olympic", {}) == "autre"
+
+
+def _shop(orders, events=(), passes=()):
+    shop = MagicMock(spec=InfomaniakTicketingService)
+    shop.passes_path = "/passes"
+    shop.base_url = "https://etickets.infomaniak.com/api/shop"
+    shop.get_orders.return_value = list(orders)
+    shop.get_events.return_value = list(events)
+    shop.get_passes.return_value = list(passes)
+    return shop
+
+
+def _order(order_id, event_id, amount):
+    return {"order_id": order_id, "event_id": event_id, "status": "paid", "amount": amount,
+            "customer": {"email": "fan@example.ch"}}
+
+
+def test_multi_shop_merges_and_counts_shared_orders_once():
+    fan = _shop([_order(1, 10, 30.0), _order(2, 11, 20.0)], events=[{"id": 10}, {"id": 11}],
+                passes=[{"code": "P1", "order_id": 5}])
+    vip = _shop([_order(2, 11, 20.0), _order(900, 10, 250.0)], events=[{"id": 10}],
+                passes=[{"code": "P1", "order_id": 5}, {"code": "V1", "order_id": 901}])
+    multi = MultiShopTicketing({"PRINCIPALE": fan, "VIP": vip})
+    assert [o["order_id"] for o in multi.get_orders()] == [1, 2, 900]
+    assert len(multi.get_events()) == 2
+    assert [p["code"] for p in multi.get_passes()] == ["P1", "V1"]
+    assert multi.duplicates_skipped == 3
+    assert multi.passes_path == "/passes"
+
+
+def test_multi_shop_connection_fails_if_one_shop_fails():
+    fan, vip = _shop([]), _shop([])
+    fan.test_connection.return_value = {"success": True, "events_count": 4}
+    vip.test_connection.return_value = {"success": False, "error": "401"}
+    result = MultiShopTicketing({"PRINCIPALE": fan, "VIP": vip}).test_connection()
+    assert result["success"] is False
+    assert result["shops"]["PRINCIPALE"]["events_count"] == 4
+
+
+def test_build_ticketing_reads_the_vip_shop(monkeypatch):
+    monkeypatch.setenv("INFOMANIAK_API_KEY", "fan-key")
+    monkeypatch.setenv("INFOMANIAK_TOKEN", "token")
+    monkeypatch.setenv("INFOMANIAK_API_KEY_VIP", "vip-key")
+    monkeypatch.delenv("INFOMANIAK_TOKEN_VIP", raising=False)
+    ticketing = build_ticketing(load_club_config(CLUB))
+    assert isinstance(ticketing, MultiShopTicketing)
+    assert ticketing.shops["VIP"].api_key == "vip-key"
+    assert ticketing.shops["VIP"].token == "token"           # main token by default
+
+
+def test_missing_vip_key_fails(monkeypatch, capsys):
+    monkeypatch.setenv("INFOMANIAK_API_KEY", "fan-key")
+    monkeypatch.delenv("INFOMANIAK_API_KEY_VIP", raising=False)
+    with pytest.raises(ValueError):
+        build_ticketing(load_club_config(CLUB))
+    assert main(["--club", CLUB, "--dry-run"]) == 1
+    assert "INFOMANIAK_API_KEY_VIP" in capsys.readouterr().err
+
+
+def test_single_shop_clubs_are_unchanged(monkeypatch):
+    monkeypatch.setenv("INFOMANIAK_API_KEY", "k")
+    monkeypatch.setenv("INFOMANIAK_API_KEY_VIP", "ignored")
+    assert isinstance(build_ticketing(load_club_config("clubs/foxes.json")), InfomaniakTicketingService)
+
+
+def test_dry_run_report_lists_shops(monkeypatch, capsys):
+    monkeypatch.setenv("INFOMANIAK_API_KEY", "fan-key")
+    monkeypatch.setenv("INFOMANIAK_API_KEY_VIP", "vip-key")
+    monkeypatch.delenv("BREVO_API_KEY", raising=False)
+    with patch("ticketing_sync.__main__.sync_infomaniak_to_brevo", return_value={"success": True}):
+        assert main(["--club", CLUB, "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert '"PRINCIPALE"' in out and '"VIP"' in out and "vip-key" not in out

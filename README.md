@@ -58,7 +58,8 @@ Un échec (clé invalide, API indisponible) fait échouer le workflow : GitHub e
 
 Guide pas à pas, avec checklist : [`docs/REPLICATION.md`](docs/REPLICATION.md). En résumé :
 
-1. Secrets `INFOMANIAK_API_KEY_<CLUB>`, `INFOMANIAK_TOKEN_<CLUB>` et `BREVO_API_KEY_<CLUB>`.
+1. Secrets `INFOMANIAK_API_KEY_<CLUB>`, `INFOMANIAK_TOKEN_<CLUB>` et `BREVO_API_KEY_<CLUB>`
+   (+ `INFOMANIAK_API_KEY_<CLUB>_VIP` et `"extra_shops": ["VIP"]` pour une seconde boutique).
 2. `clubs/<club>.json` copié de `clubs/foxes.json` et adapté (code club, `club_keywords`,
    saison, adversaires, tarifs et zones) ; `<club>` ajouté aux `options` du lancement manuel
    dans `sync.yml`.
