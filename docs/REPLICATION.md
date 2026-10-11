@@ -9,7 +9,7 @@ La synchro lit toute la billetterie Infomaniak d'une organisation (commandes, bi
 - les attributs d'achat et de présence ;
 - une liste par événement, nommée selon le référentiel DMOS.
 
-Elle tourne en production pour les Pully Lausanne Foxes depuis le 10.10.2026 (434 contacts, 11 listes).
+Elle tourne en production pour les Pully Lausanne Foxes depuis le 10.10.2026 (434 contacts, 11 listes) et pour les Lions de Genève depuis le 11.10.2026 (boutiques fan + VIP, 510 contacts, 10 listes).
 
 **Quand elle tourne** : un workflow GitHub se réveille toutes les heures. Il ne synchronise que si un match de l'organisation atteint l'un de ces deux moments :
 - **H-24** : les acheteurs sont dans Brevo la veille du match ;
