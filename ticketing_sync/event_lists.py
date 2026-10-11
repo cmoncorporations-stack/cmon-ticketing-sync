@@ -75,9 +75,10 @@ EVENT_TYPES = ("match", "abonnement", "membre", "camp", "partenaire", "autre", "
 # append details with dashes: "Pully Lausanne Foxes vs Fribourg Olympic -
 # 09.04.26 - 1/2 Finale - Game 3".
 _VERSUS = re.compile(r"\s+(?:vs\.?|v\.?|contre|x)\s+", re.IGNORECASE)
-# A dash with a space on at least one side ("A DEFINIR- 03.02.27"), never
-# inside a word ("Monthey-Chablais").
-_DASHES = re.compile(r"\s+[-–—/]\s*|\s*[-–—/]\s+")
+# A dash (or a "|", as in Lions names: "VIP | GC Zürich vs. Lions de Genève |
+# SBL 2026-27") with a space on at least one side ("A DEFINIR- 03.02.27"),
+# never inside a word ("Monthey-Chablais").
+_DASHES = re.compile(r"\s+[-–—/|]\s*|\s*[-–—/|]\s+")
 _STOPWORDS = {"de", "du", "des", "la", "le", "les", "d", "l", "et", "the", "of",
               "basket", "basketball", "bbc", "bc", "club", "sa", "fc"}
 

@@ -8,14 +8,16 @@
   },
   "infomaniak": {
     "passes_path": "/passes",
-    "extra_shops": ["VIP"]
+    "extra_shops": [
+      "VIP"
+    ]
   },
   "brevo": {
     "list_ids": [],
     "only_optin": false,
     "acquisition_attribute": "SOURCE_ACQUISITION",
     "acquisition_value": "Billetterie",
-    "partner_acquisition_value": "Business Engagement",
+    "partner_acquisition_value": "Partenariats",
     "optin_attribute": "OPT_IN",
     "optin_value": "YES"
   },
@@ -30,7 +32,9 @@
   "event_lists": {
     "club_code": "LIONS",
     "season": "2026-2027",
-    "club_keywords": ["lions", "geneve"],
+    "club_keywords": [
+      "lions de geneve"
+    ],
     "opponent_codes": {
       "Pully Lausanne Foxes": "FOXES",
       "Fribourg Olympic": "FOB",
@@ -42,7 +46,12 @@
       "Neuchâtel": "UNI",
       "Massagno": "MAS",
       "Vevey": "VEV",
-      "Swiss Central": "SCB"
+      "Swiss Central": "SCB",
+      "Benfica": "SLB",
+      "Denizli": "DEN",
+      "Bakken Bears": "BAK",
+      "Prievidza": "PRI",
+      "Landau": "LAN"
     },
     "event_types": {}
   },

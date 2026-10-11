@@ -14,18 +14,26 @@ from ticketing_sync.infomaniak import InfomaniakTicketingService, MultiShopTicke
 
 CLUB = "clubs/lions.json"
 
+# Real names from the Lions shops (dry run of 11.10.2026).
 LIONS_EVENT_NAMES = {
-    "Lions de Genève vs Pully Lausanne Foxes - 18.10.26 - championnat SBL": ("match", "FOXES"),
-    "Lions de Genève vs Fribourg Olympic - 24.10.26 - championnat SBL": ("match", "FOB"),
-    "Lions de Genève vs BBC Monthey-Chablais - 31.10.26 - championnat SBL": ("match", "MON"),
-    "Lions de Genève vs Union Neuchâtel Basket - 07.11.26 - championnat SBL": ("match", "UNI"),
-    "Lions de Genève vs Spinelli Massagno - 14.11.26 - championnat SBL": ("match", "MAS"),
-    "Lions de Genève vs Starwings Basket - 21.11.26 - championnat SBL": ("match", "SWB"),
-    "Lions de Genève vs Vevey Riviera Basket - 28.11.26 - championnat SBL": ("match", "VEV"),
-    "Lions de Genève vs Swiss Central Basketball - 05.12.26 - championnat SBL": ("match", "SCB"),
-    "Lions vs Lugano Tigers - 12.12.26": ("match", "LUG"),
-    "Abonnement saison 2026-2027 - Lions de Genève": ("abonnement", None),
-    "Soirée partenaires Lions vs Fribourg Olympic": ("partenaire", None),
+    "Lions de Genève vs. Fribourg Olympic | SBL 2026-27": ("match", "FOB"),
+    "Lions de Genève vs. Pully Lausanne Foxes | SBL 2026-27": ("match", "FOXES"),
+    "Lions de Genève vs. GC Zürich | SBL 2026-27": ("match", "GCZ"),
+    "Lions de Genève vs. Union Neuchâtel | SBL 2026-27": ("match", "UNI"),
+    "Lions de Genève vs. Spinelli Massagno | SBL 2026-27": ("match", "MAS"),
+    "Lions de Genève vs. Lugano Tigers | SBL 2026-27": ("match", "LUG"),
+    "Lions de Genève vs. BBC Nyon | SBL 2026-27": ("match", "NYO"),
+    "Lions de Genève vs. SL Benfica | FIBA Europe Cup": ("match", "SLB"),
+    "Lions de Genève vs. Yukatel Denizli Basket | FIBA Europe Cup": ("match", "DEN"),
+    "Lions de Genève vs. Bakken Bears | FIBA Europe Cup": ("match", "BAK"),
+    "Lions de Genève vs. BC Prievidza | FIBA Europe Cup": ("match", "PRI"),
+    "Lions de Genève vs. Landau Lions | FIBA Europe Cup": ("match", "LAN"),
+    "VIP | GC Zürich  vs.  Lions de Genève | SBL 2026-27": ("match", "GCZ"),
+    "VIP | A++ Massagno vs. Lions de Genève | SBL 2026-27": ("match", "MAS"),
+    "VIP | Lugano Tigers Lions vs. Lions de Genève | SBL 2026-27": ("match", "LUG"),
+    "Abonnement Adulte | Saison 2026 - 2027": ("abonnement", None),
+    "Pass Europe 5 matchs | Adulte | Centrales": ("abonnement", None),
+    "Abonnement VIP – Domaine du Paradis": ("abonnement", None),
 }
 
 
@@ -43,6 +51,9 @@ def test_lions_config_classifies_events_and_codes_opponents():
 
 def test_lions_matches_need_club_keywords():
     assert classify_event("Lions de Genève vs Fribourg Olympic", {}) == "autre"
+    # "lions" alone would also match opponents named Lions (Landau Lions).
+    assert classify_event("Lions de Genève vs. Landau Lions | FIBA Europe Cup",
+                          {"club_keywords": ["lions"]}) == "autre"
 
 
 def _shop(orders, events=(), passes=()):
