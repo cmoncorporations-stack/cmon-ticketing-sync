@@ -234,7 +234,7 @@ Tous ont été réglés, dans le code ou dans la configuration des Foxes. Ils re
 | Aucun passage automatique après création du dépôt | GitHub met du temps à enregistrer une planification | vérifier les runs `schedule` ; sinon désactiver puis réactiver le workflow |
 | Match d'une organisation classé `autre` (Lions : « Landau Lions », « Lugano Tigers Lions ») | `club_keywords` trop court : l'adversaire contient aussi le mot | mot-clé plus précis (`lions de geneve`) |
 | Code adversaire déduit avec la compétition (« SL Benfica \| FIBA Europe Cup ») | séparateur « \| » dans les noms Infomaniak | corrigé : « \| » sépare comme un tiret ; ajouter le code dans `opponent_codes` |
-| `SOURCE_ACQUISITION has no option 'Business Engagement'` | libellé différent dans le Brevo de l'organisation | `brevo.partner_acquisition_value` (Lions : `Partenariats`) |
+| `SOURCE_ACQUISITION has no option 'Business Engagement'` | libellé différent dans le Brevo de l'organisation | ajouter l'option dans Brevo (référentiel DMOS : `Business Engagement`), ou à défaut régler `brevo.partner_acquisition_value` |
 | Liste abonnés (25) ≠ abonnés avec attribut (27) | les 2 VIP sont dans leur propre liste | normal : filtrer sur `TICKETING_SEASON_TICKET` pour le total |
 
 ## Checklist de réplication

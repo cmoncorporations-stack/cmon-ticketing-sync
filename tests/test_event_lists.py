@@ -295,3 +295,27 @@ def test_folder_found_despite_case_spacing_or_prefix(existing):
     assert state["folder_id"] == 9 and not state["created_folder"]
     brevo.create_folder.assert_not_called()
     brevo.create_list.assert_called_once_with("CMON-FOXES-Partenaires-20261105", folder_id=9)
+
+
+def test_dry_run_lists_brevo_folders_when_one_is_not_found():
+    orders = [{"id": 1, "customer": {"email": "a@x.ch"}, "event": {"id": 1, "name": "Abonnement 2026-2027"}},
+              {"id": 2, "customer": {"email": "b@x.ch"},
+               "event": {"id": 2, "name": "Foxes vs Lions", "date": "2026-10-18"}}]
+    ticketing = MagicMock()
+    ticketing.get_orders.return_value = orders
+    ticketing.get_events.return_value = []
+    brevo = MagicMock()
+    brevo.get_all_folders.return_value = [{"id": 3, "name": "Billetterie 2026-2027"},
+                                          {"id": 9, "name": "Abonnés saison"}]
+    brevo.get_folder_lists.return_value = []
+    brevo.get_every_list.return_value = []
+    brevo.get_contact_index.return_value = {}
+    brevo.get_contact_attributes.return_value = []
+
+    result = sync_infomaniak_to_brevo(ticketing, brevo, event_lists=CONFIG, dry_run=True)
+
+    summary = result["event_lists"]
+    assert summary["folders"]["Abonnement"]["id"] is None
+    assert summary["brevo_folders"] == {"3": "Billetterie 2026-2027", "9": "Abonnés saison"}
+    assert any("Abonnement" in w and "brevo_folders" in w for w in result["warnings"])
+    brevo.create_folder.assert_not_called()

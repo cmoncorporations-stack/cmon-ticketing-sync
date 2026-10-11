@@ -17,7 +17,7 @@
     "only_optin": false,
     "acquisition_attribute": "SOURCE_ACQUISITION",
     "acquisition_value": "Billetterie",
-    "partner_acquisition_value": "Partenariats",
+    "partner_acquisition_value": "Business Engagement",
     "optin_attribute": "OPT_IN",
     "optin_value": "YES"
   },

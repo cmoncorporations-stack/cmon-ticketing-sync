@@ -705,6 +705,13 @@ def sync_infomaniak_to_brevo(ticketing, brevo, list_ids: Optional[List[int]] = N
             for name, list_id in state["list_ids"].items():
                 summary["lists"][name]["list_id"] = list_id
                 summary["lists"][name]["created"] = name in state["created_lists"]
+        missing = [f for f, v in summary["folders"].items() if v["id"] is None]
+        if missing and brevo is not None:
+            # Folder names only (no contact data), to fix the "folders" setting.
+            summary["brevo_folders"] = {str(f.get("id")): f.get("name") for f in brevo.get_all_folders()}
+            warnings.append(f"Dossier(s) Brevo introuvable(s) : {', '.join(missing)}"
+                            + (" (créé(s) à la synchro)" if dry_run else "")
+                            + ". Voir brevo_folders et régler 'folders' dans la config si le dossier existe sous un autre nom.")
 
     contacts: Dict[str, Dict[str, Any]] = {}
     for buyer in selected:
