@@ -53,7 +53,13 @@
       "Prievidza": "PRI",
       "Landau": "LAN"
     },
-    "event_types": {}
+    "event_types": {},
+    "folders": {
+      "match": "Cmon Sports | Billetterie 26-27",
+      "camp": "Cmon Sports | Billetterie 26-27",
+      "autre": "Cmon Sports | Billetterie 26-27",
+      "abonnement": "Abonnement 26-27"
+    }
   },
   "ticket_attributes": {
     "tarif_mapping": {

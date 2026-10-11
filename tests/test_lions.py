@@ -154,3 +154,16 @@ def test_every_lions_tariff_and_zone_has_a_brevo_option(mapping_key, labels):
     writer = CategoryWriter([], "X", load_club_config(CLUB)["ticket_attributes"][mapping_key])
     for label, option in labels.items():
         assert writer._rule(label) == option, label
+
+
+def test_lions_lists_go_to_existing_brevo_folders():
+    from ticketing_sync.event_lists import find_folder
+
+    brevo_folders = [{"id": 195, "name": "Cmon Sports | Billetterie 26-27"}, {"id": 192, "name": "Abonnement 26-27"},
+                     {"id": 136, "name": "Billetterie 25-26"}, {"id": 122, "name": "Abonnement 25-26"},
+                     {"id": 60, "name": "Members & Staff"}, {"id": 56, "name": "Business engagement"}]
+    folders = load_club_config(CLUB)["event_lists"]["folders"]
+    assert find_folder(brevo_folders, folders["match"])["id"] == 195
+    assert find_folder(brevo_folders, folders["abonnement"])["id"] == 192
+    assert find_folder(brevo_folders, "Business Engagement")["id"] == 56
+    assert find_folder(brevo_folders, "Members & Staff")["id"] == 60
