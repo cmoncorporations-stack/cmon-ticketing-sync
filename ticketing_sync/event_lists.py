@@ -401,7 +401,9 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
             continue
         # Match lists hold the fans who came or bought a ticket, not every
         # pre-generated abonné / member seat.
-        if not counts_for_event(row, played=event_day <= today):
+        # No-shows are left out of match lists only: camps and other events
+        # are not scanned at the door.
+        if not counts_for_event(row, played=event_type == "match" and event_day <= today):
             continue
         list_name, warning = build_list_name(club_code, name, event_day, opponent_codes, club_keywords,
                                              event_type)

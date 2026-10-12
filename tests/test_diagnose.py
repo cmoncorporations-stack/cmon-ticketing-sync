@@ -15,7 +15,8 @@ def test_report_explains_vip_pass_held_by_someone_else_without_personal_data():
     shop.passes_path = "/passes"
     shop.orders_by_id.return_value = {1: order}
     shop._iter_pages.return_value = [vip_pass]
-    shop.get_events.return_value = [{"name": "Pully Lausanne Foxes vs BBC Nyon - 25.10.26",
+    shop.iter_tickets.return_value = []
+    shop.past_and_future_events.return_value = [{"name": "Pully Lausanne Foxes vs BBC Nyon - 25.10.26",
                                      "date": "2026-10-25 17:30:00", "start": "2026-10-25 17:30:00"}]
     shop.get_orders.return_value = []
     shop.get_passes.return_value = [{"order_id": 1, "date": "2026-08-01 10:00:00", "status": "paid",
@@ -33,3 +34,24 @@ def test_report_explains_vip_pass_held_by_someone_else_without_personal_data():
     text = json.dumps(report, ensure_ascii=False)
     for secret in ("boss@firm.ch", "Kim", "Favre", "Léa", "Roy", "079"):
         assert secret not in text
+
+
+def test_vip_pass_holder_gets_the_email_of_their_own_booking():
+    """A company buys VIP passes; each holder books seats under their own
+    email: the pass is synced under that email, so the holder is a VIP."""
+    from ticketing_sync.infomaniak import assemble_passes, email_by_name, normalize_order
+    company = {"order_id": 1, "status": "paid", "customer": {"firstname": "Kim", "lastname": "Favre",
+                                                             "email": "boss@firm.ch"}}
+    booking = {"order_id": 2, "status": "free", "customer": {"firstname": "Léa", "lastname": "ROY",
+                                                             "email": "lea@x.ch"}}
+    homonyms = [{"firstname": "Ana", "lastname": "Dias", "email": "a1@x.ch"},
+                {"firstname": "Ana", "lastname": "Dias", "email": "a2@x.ch"}]
+    vip = "Abonnement VIP Expérience Njørden - 3 Entrées I 2026 - 2027"
+    passes = [{"status": "valid", "order_id": 1, "category_name": vip, "code": "P1",
+               "form": {"firstname": "Lea", "lastname": "Roy"}},
+              {"status": "valid", "order_id": 1, "category_name": vip, "code": "P2",
+               "form": {"firstname": "Ana", "lastname": "Dias"}}]
+    names = email_by_name([company["customer"], booking["customer"], *homonyms])
+    rows = [normalize_order(p) for p in assemble_passes(passes, {1: company, 2: booking}, names)]
+    assert rows[0]["email"] == "lea@x.ch" and rows[0]["event_name"] == vip
+    assert rows[1] is None  # homonyms with two emails: no guess, no phone

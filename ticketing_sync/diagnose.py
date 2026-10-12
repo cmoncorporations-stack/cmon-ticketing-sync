@@ -15,8 +15,10 @@ from ticketing_sync.event_lists import EventResolver, classify_event, is_vip, is
 from ticketing_sync.infomaniak import (
     _first,
     _is_cancelled,
+    _name_key,
     _order_kept,
     _same_person,
+    email_by_name,
     has_season_ticket_line,
     normalize_order,
 )
@@ -39,7 +41,8 @@ def _raw_passes(shop) -> List[Dict[str, Any]]:
     return list(shop._iter_pages(shop.passes_path, "passes"))
 
 
-def _pass_view(item: Dict[str, Any], order: Dict[str, Any]) -> Dict[str, Any]:
+def _pass_view(item: Dict[str, Any], order: Dict[str, Any],
+               emails_by_name: Optional[Dict[tuple, str]] = None) -> Dict[str, Any]:
     customer = order.get("customer") or {}
     form = {k: v for k, v in (item.get("form") or {}).items() if v not in (None, "")}
     if _is_cancelled(item.get("status")):
@@ -50,6 +53,8 @@ def _pass_view(item: Dict[str, Any], order: Dict[str, Any]) -> Dict[str, Any]:
         outcome = "contact = acheteur (formulaire vide)"
     elif _same_person(form, customer):
         outcome = "contact = acheteur (même nom)"
+    elif _name_key(form) in (emails_by_name or {}):
+        outcome = "contact = détenteur, email retrouvé par son nom"
     elif form.get("phone"):
         outcome = "contact = détenteur, par téléphone (nom différent de l'acheteur)"
     else:
@@ -64,7 +69,7 @@ def diagnose(ticketing, config: Dict[str, Any], hashes: Iterable[str]) -> Dict[s
     event_config = config.get("event_lists") or {}
     tz = ZoneInfo((config.get("schedule") or {}).get("timezone") or DEFAULT_TIMEZONE)
 
-    events = ticketing.get_events()
+    events = ticketing.past_and_future_events()
     report: Dict[str, Any] = {"events": [
         {"name": e.get("name"), "date": e.get("date"), "start": e.get("start"),
          "start_read": (lambda d: d.isoformat() if d else None)(
@@ -80,11 +85,13 @@ def diagnose(ticketing, config: Dict[str, Any], hashes: Iterable[str]) -> Dict[s
     raw = []
     for shop in _shops(ticketing):
         by_id = shop.orders_by_id()
+        names = email_by_name([o.get("customer") for o in by_id.values()]
+                              + [t.get("customer") for t in shop.iter_tickets()])
         for item in _raw_passes(shop):
             order = by_id.get(_first(item, "order_id")) or {}
-            raw.append((item, order))
+            raw.append((item, order, names))
 
-    vip = [_pass_view(item, order) for item, order in raw if is_vip(item.get("category_name"))]
+    vip = [_pass_view(item, order, names) for item, order, names in raw if is_vip(item.get("category_name"))]
     report["vip_passes"] = {
         "total": len(vip),
         "by_product_and_outcome": [{"product": p, "outcome": o, "count": n}
@@ -95,7 +102,7 @@ def diagnose(ticketing, config: Dict[str, Any], hashes: Iterable[str]) -> Dict[s
     contacts = []
     for index, h in enumerate(hashes, 1):
         buyer_orders = [o for o in orders if email_hash((o.get("customer") or {}).get("email")) == h]
-        bought_passes = [_pass_view(item, order) for item, order in raw
+        bought_passes = [_pass_view(item, order, names) for item, order, names in raw
                          if email_hash((order.get("customer") or {}).get("email")) == h]
         own_rows = [r for r in rows if email_hash(r.get("email")) == h]
         row_views = []

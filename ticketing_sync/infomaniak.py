@@ -115,6 +115,7 @@ class InfomaniakTicketingService:
         self.orders_path = orders_path or DEFAULT_ORDERS_PATH
         self.tickets_path = tickets_path or DEFAULT_TICKETS_PATH
         self._orders_by_id: Optional[Dict[Any, Dict[str, Any]]] = None
+        self._tickets: Optional[List[Dict[str, Any]]] = None
         # Season tickets / passes (holder, birthdate, NPA, phone): /passes,
         # off unless configured.
         self.passes_path = passes_path
@@ -328,8 +329,25 @@ class InfomaniakTicketingService:
 
     def iter_tickets(self, max_tickets: int = 1000000) -> Iterable[Dict[str, Any]]:
         """Every ticket (``/tickets``): order, event, zone, tariff, amount,
-        status (``valid`` / ``scanned`` / ``cancelled``), pass."""
-        return self._iter_pages(self.tickets_path, "tickets", max_items=max_tickets)
+        status (``valid`` / ``scanned`` / ``cancelled``), pass. Read once
+        per run (orders, passes and the schedule all use them)."""
+        if self._tickets is None:
+            self._tickets = list(self._iter_pages(self.tickets_path, "tickets", max_items=max_tickets))
+        return iter(self._tickets)
+
+    def past_and_future_events(self) -> List[Dict[str, Any]]:
+        """``/events`` lists only events still on sale: a match disappears
+        once played. The schedule needs it the day after (H+24), so events
+        are completed with the name and date carried by their tickets."""
+        events = list(self.get_events())
+        known = {e.get("name") for e in events}
+        for ticket in self.iter_tickets():
+            name = ticket.get("event_name")
+            if name and name not in known and ticket.get("event_date"):
+                known.add(name)
+                events.append({"name": name, "date": ticket.get("event_date"),
+                               "event_id": ticket.get("event_id")})
+        return events
 
     def get_orders(self, since: Optional[str] = None, max_orders: int = 100000) -> List[Dict[str, Any]]:
         """Orders as the sync reads them: one entry per order and event,
@@ -343,7 +361,9 @@ class InfomaniakTicketingService:
         if not self.passes_path:
             return []
         passes = list(self._iter_pages(self.passes_path, "passes", max_items=max_passes))
-        return assemble_passes(passes, self.orders_by_id())
+        customers = [o.get("customer") for o in self.orders_by_id().values()]
+        customers += [t.get("customer") for t in self.iter_tickets()]
+        return assemble_passes(passes, self.orders_by_id(), email_by_name(customers))
 
 
 def _is_cancelled(status: Any) -> bool:
@@ -414,12 +434,36 @@ def _same_person(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     return all(names[0]) and names[0] == names[1]
 
 
+def _name_key(person: Dict[str, Any]) -> Optional[tuple]:
+    first = _fold(person.get("firstname") or "").strip()
+    last = _fold(person.get("lastname") or "").strip()
+    return (first, last) if first and last else None
+
+
+def email_by_name(customers: Iterable[Optional[Dict[str, Any]]]) -> Dict[tuple, str]:
+    """(first name, last name) -> email, for names that point to exactly one
+    email among the buyers. Homonyms with different emails are left out."""
+    seen: Dict[tuple, set] = {}
+    for customer in customers:
+        if not isinstance(customer, dict):
+            continue
+        key = _name_key(customer)
+        email = (customer.get("email") or "").strip().lower()
+        if key and _EMAIL_RE.match(email):
+            seen.setdefault(key, set()).add(email)
+    return {key: next(iter(emails)) for key, emails in seen.items() if len(emails) == 1}
+
+
 def assemble_passes(passes: Iterable[Dict[str, Any]],
-                    orders_by_id: Dict[Any, Dict[str, Any]]) -> List[Dict[str, Any]]:
+                    orders_by_id: Dict[Any, Dict[str, Any]],
+                    emails_by_name: Optional[Dict[tuple, str]] = None) -> List[Dict[str, Any]]:
     """``/passes`` in the shape ``normalize_order`` reads: the holder (pass
     form: name, phone, birthday, NPA) is the contact. The form has no
     email: the buyer's email is used when the holder is the buyer (same
-    name) or the form is empty; otherwise the holder is identified by phone.
+    name) or the form is empty. A holder who is not the buyer gets the email
+    of the only buyer with the same name (a company buys VIP passes, each
+    holder books their seats under their own email); otherwise the holder is
+    identified by phone.
     """
     out = []
     for item in passes:
@@ -434,6 +478,8 @@ def assemble_passes(passes: Iterable[Dict[str, Any]],
             holder = {**form, **customer}
         elif _same_person(form, customer):
             holder = {**form, "email": customer.get("email")}
+        elif _name_key(form) in (emails_by_name or {}):
+            holder = {**form, "email": (emails_by_name or {})[_name_key(form)]}
         else:
             holder = form
         out.append({
@@ -834,6 +880,16 @@ class MultiShopTicketing:
             event_id = _first(event, "event_id", "id")
             return None if event_id is None else str(event_id)
         return self._merge((shop.get_events() for shop in self.shops.values()), key)
+
+    def past_and_future_events(self) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        names = set()
+        for shop in self.shops.values():
+            for event in shop.past_and_future_events():
+                if event.get("name") not in names:
+                    names.add(event.get("name"))
+                    merged.append(event)
+        return merged
 
     def get_orders(self, since: Optional[str] = None, max_orders: int = 100000) -> List[Dict[str, Any]]:
         def key(order):

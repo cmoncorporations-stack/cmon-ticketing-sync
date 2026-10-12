@@ -55,6 +55,7 @@ def test_if_due_skips_when_no_match_is_at_h24(monkeypatch, capsys):
     events = [{"name": "Pully Lausanne Foxes vs Lions de Genève - 10.10.26 - championnat SBL",
                "date": "2026-10-10 19:30:00"}]
     with patch("ticketing_sync.__main__.InfomaniakTicketingService.get_events", return_value=events), \
+            patch("ticketing_sync.__main__.InfomaniakTicketingService.iter_tickets", return_value=iter([])), \
             patch("ticketing_sync.__main__.sync_infomaniak_to_brevo", return_value={"success": True}) as sync:
         assert main(["--club", CLUB, "--if-due"], now=datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)) == 0
         sync.assert_not_called()
@@ -70,3 +71,18 @@ def test_test_mode_only_checks_infomaniak(monkeypatch):
             patch("ticketing_sync.__main__.sync_infomaniak_to_brevo") as sync:
         assert main(["--club", CLUB, "--test"]) == 0
         sync.assert_not_called()
+
+
+def test_if_due_sees_a_played_match_through_its_tickets(monkeypatch, capsys):
+    # /events drops a match once played: the H+24 mark comes from the tickets.
+    monkeypatch.setenv("INFOMANIAK_API_KEY", "k")
+    monkeypatch.setenv("BREVO_API_KEY", "b")
+    tickets = [{"event_name": "Pully Lausanne Foxes vs Lions de Genève - 10.10.26 - championnat SBL",
+                "event_date": "2026-10-10 19:30:00", "event_id": 7}]
+    with patch("ticketing_sync.__main__.InfomaniakTicketingService.get_events", return_value=[]), \
+            patch("ticketing_sync.__main__.InfomaniakTicketingService.iter_tickets",
+                  side_effect=lambda *a, **k: iter(tickets)), \
+            patch("ticketing_sync.__main__.sync_infomaniak_to_brevo", return_value={"success": True}) as sync:
+        assert main(["--club", CLUB, "--if-due"], now=datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)) == 0
+        sync.assert_called_once()
+    assert '"mark": "H+24"' in capsys.readouterr().out

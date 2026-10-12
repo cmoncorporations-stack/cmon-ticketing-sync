@@ -160,7 +160,7 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
 
     if args.if_due:
         try:
-            events = ticketing.get_events()
+            events = ticketing.past_and_future_events()
         except InfomaniakTicketingAPIError as e:
             print(f"Infomaniak : {e}", file=sys.stderr)
             return 1
