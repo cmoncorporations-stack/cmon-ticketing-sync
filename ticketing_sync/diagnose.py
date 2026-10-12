@@ -116,8 +116,31 @@ def diagnose(ticketing, config: Dict[str, Any], hashes: Iterable[str]) -> Dict[s
                 "season_ticket_seats": has_season_ticket_line(r),
                 "vip_season_ticket": is_vip_season_ticket(r, name, event_type),
             })
+        # Is this contact the holder of a VIP pass bought by someone else?
+        own_names = {_name_key(o.get("customer") or {}) for o in buyer_orders} - {None}
+        own_last = {n[1] for n in own_names}
+        holder_match = []
+        for item, order, names in raw:
+            if not is_vip(item.get("category_name")):
+                continue
+            key = _name_key({k: v for k, v in (item.get("form") or {}).items() if v})
+            if not key:
+                continue
+            if key in own_names:
+                match = "même prénom et nom"
+            elif key[1] in own_last:
+                match = "même nom de famille seulement"
+            else:
+                continue
+            holder_match.append({"product": item.get("category_name"), "match": match,
+                                 "name_unique_to_one_email": key in names})
+        pass_tickets = sum(1 for o in buyer_orders for t in o.get("tickets") or [] if t.get("pass_id"))
         contacts.append({
             "contact": f"#{index}", "email_hash": h,
+            "vip_pass_holder_name_match": holder_match,
+            "tickets_from_a_pass": pass_tickets,
+            "ticket_categories": sorted({t.get("category_name") or "" for o in buyer_orders
+                                         for t in o.get("tickets") or []}),
             "found_as_buyer_orders": len(buyer_orders),
             "order_statuses": dict(Counter(o.get("status") for o in buyer_orders)),
             "passes_bought": bought_passes,
