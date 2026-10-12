@@ -2,9 +2,10 @@
 
 The scheduler (GitHub Actions) wakes up every hour and asks ``due_runs``
 whether a match crosses one of those two marks within the last
-``lookback`` window. The window is a bit longer than the wake-up interval
-so a delayed run does not miss a mark; the sync is idempotent, so the rare
-double run this allows is harmless.
+``lookback`` window. GitHub skips many hourly runs (5 runs in 25 hours
+were seen on 10-11.10.2026), so the window is 12 hours: the next run that
+does happen catches a mark a skipped run missed. Every run inside the
+window syncs again; the sync is idempotent, so this is harmless.
 
 * H-24: buyers of the next match are in Brevo the day before (pre-match
   campaigns, matchday SMS).
@@ -18,7 +19,7 @@ from zoneinfo import ZoneInfo
 from ticketing_sync.event_lists import classify_event, date_override
 
 DEFAULT_OFFSET_HOURS = 24
-DEFAULT_LOOKBACK_MINUTES = 90
+DEFAULT_LOOKBACK_MINUTES = 720
 DEFAULT_TIMEZONE = "Europe/Zurich"
 DEFAULT_EVENT_TYPES = ("match",)
 

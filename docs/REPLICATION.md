@@ -128,7 +128,7 @@ L'ajout à la matrice des passages automatiques (`'["foxes"]'` → `'["foxes", "
 | `brevo.acquisition_value` / `partner_acquisition_value` | valeurs de `SOURCE_ACQUISITION` | `Billetterie` / `Business Engagement` | rarement |
 | `brevo.list_ids` | liste globale où mettre tous les acheteurs | vide | optionnel |
 | `infomaniak.passes_path` | abonnements et cartes de membre | `/passes` | non |
-| `schedule` | H-24 / H+24, fenêtre de 90 min, fuseau | `Europe/Zurich` | rarement |
+| `schedule` | H-24 / H+24, fenêtre de 12 h (`lookback_minutes` 720), fuseau | `Europe/Zurich` | rarement |
 
 Le fichier ne contient **jamais** de clé : le bloc `secrets` ne liste que les noms des secrets GitHub.
 

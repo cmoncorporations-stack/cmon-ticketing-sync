@@ -23,7 +23,7 @@
   },
   "schedule": {
     "offset_hours": 24,
-    "lookback_minutes": 90,
+    "lookback_minutes": 720,
     "timezone": "Europe/Zurich",
     "sync_event_types": [
       "match"

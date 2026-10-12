@@ -32,14 +32,17 @@ def test_h_minus_24_and_h_plus_24():
 
 
 def test_nothing_due_outside_the_windows():
-    for now in (utc(2026, 10, 9, 17, 0), utc(2026, 10, 9, 19, 30), utc(2026, 10, 10, 18, 0),
-                utc(2026, 10, 11, 17, 0), utc(2026, 10, 11, 19, 30)):
+    # Marks: H-24 = 9.10 17:30 UTC, H+24 = 11.10 17:30 UTC; window 12 h after each.
+    for now in (utc(2026, 10, 9, 17, 0), utc(2026, 10, 10, 6, 0), utc(2026, 10, 10, 18, 0),
+                utc(2026, 10, 11, 17, 0), utc(2026, 10, 12, 6, 0)):
         assert due_runs([LIONS], CONFIG, now) == [], now
 
 
 def test_delayed_hourly_run_still_catches_the_mark():
-    # Lookback is 90 min: a run 80 min late still sees the H+24 mark.
+    # Lookback is 12 h: GitHub skips hourly runs; the next run, even 11 h
+    # after the H+24 mark, still sees it.
     assert [d["mark"] for d in due_runs([LIONS], CONFIG, utc(2026, 10, 11, 18, 50))] == ["H+24"]
+    assert [d["mark"] for d in due_runs([LIONS], CONFIG, utc(2026, 10, 12, 4, 30))] == ["H+24"]
 
 
 def test_only_matches_trigger_by_default():

@@ -23,8 +23,9 @@ Toutes les règles sont décrites dans [`docs/INTEGRATION.md`](docs/INTEGRATION.
 | **H+24** après chaque match | les scans sont définitifs : présence, `DERNIER_MATCH` et `DERNIER_IMPORT` à jour pour les automations après-match |
 
 Le workflow [`sync.yml`](.github/workflows/sync.yml) se réveille **toutes les heures** et ne
-synchronise que si un match du club atteint H-24 ou H+24 (fenêtre de 90 minutes pour absorber
-les retards de GitHub ; une synchro répétée ne change rien). Les heures des événements sont
+synchronise que si un match du club a atteint H-24 ou H+24 dans les 12 dernières heures. GitHub
+saute souvent des passages planifiés : le suivant rattrape celui qui manque (une synchro répétée ne
+change rien). Les heures des événements sont
 lues dans Infomaniak, en heure de Zurich. Réglages : section `schedule` du fichier du club.
 
 ## Mise en route
