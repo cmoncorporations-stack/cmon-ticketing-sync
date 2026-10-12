@@ -110,6 +110,8 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
     parser.add_argument("--test", action="store_true", help="Only test the Infomaniak connection")
     parser.add_argument("--schema", action="store_true",
                         help="Print the field names and types returned by the API (no values)")
+    parser.add_argument("--diagnose", action="store_true",
+                        help="Read only: how the sync sees the contacts whose email hashes are in DIAG_HASHES")
     parser.add_argument("--probe", action="store_true",
                         help="Try every way of sending the Infomaniak key (read only) and report which one works")
     parser.add_argument("--if-due", action="store_true",
@@ -132,6 +134,17 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
 
     if args.schema:
         print(json.dumps({"club": club, **ticketing.schema_samples()}, indent=1, ensure_ascii=False))
+        return 0
+
+    if args.diagnose:
+        from ticketing_sync.diagnose import diagnose
+        hashes = (os.environ.get("DIAG_HASHES") or "").replace(" ", "").split(",")
+        try:
+            report = diagnose(ticketing, config, hashes)
+        except InfomaniakTicketingAPIError as e:
+            print(f"Infomaniak : {e}", file=sys.stderr)
+            return 1
+        print(json.dumps({"club": club, **report}, indent=1, ensure_ascii=False))
         return 0
 
     if args.probe:

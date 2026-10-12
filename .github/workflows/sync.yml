@@ -19,7 +19,11 @@ on:
         required: true
         default: dry-run
         type: choice
-        options: [test, probe, schema, dry-run, sync]
+        options: [test, probe, schema, diagnose, dry-run, sync]
+      targets:
+        description: "diagnose : empreintes d'email (sha256, 16 caractères), séparées par des virgules"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -59,6 +63,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           MODE: ${{ inputs.mode }}
+          DIAG_HASHES: ${{ inputs.targets }}
           # Tant que la variable du dépôt SYNC_ENABLED n'est pas à "true", les
           # passages planifiés ne font qu'un dry run (aucune écriture dans Brevo).
           SYNC_ENABLED: ${{ vars.SYNC_ENABLED }}
@@ -72,6 +77,7 @@ jobs:
               test) args="$args --test" ;;
               probe) args="$args --probe" ;;
               schema) args="$args --schema" ;;
+              diagnose) args="$args --diagnose" ;;
               dry-run) args="$args --dry-run" ;;
               sync) ;;
             esac
