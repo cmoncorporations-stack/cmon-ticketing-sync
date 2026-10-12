@@ -57,6 +57,8 @@ DEFAULT_FOLDERS = {
     # VIP season tickets (companies, hospitality) are a B2B relationship.
     "abonnement_vip": "Business Engagement",
     "partenaire": "Business Engagement",
+    # Guests in the VIP area of a match, without a VIP season ticket.
+    "invite_vip": "Business Engagement",
     # Member-card holders ("Carte membre").
     "membre": "Members & Staff",
 }
@@ -290,6 +292,13 @@ def is_vip_season_ticket(row: Dict[str, Any], name: Optional[str], event_type: O
     return any(is_vip(label) for label in season_ticket_labels(row, name, event_type))
 
 
+def has_vip_ticket(row: Dict[str, Any]) -> bool:
+    """A ticket (not a pre-generated abonné / member seat) in a VIP zone or
+    at a VIP tariff: a VIP guest of that match."""
+    return any(line["kind"] == "billet" and (is_vip(line.get("place")) or is_vip(line.get("tariff")))
+               for line in row.get("lines") or [])
+
+
 def is_placeholder(name: str) -> bool:
     name_words = {w.lower() for w in _words(name)}
     return any(_contains_words(name_words, k) for k in PLACEHOLDER_KEYWORDS)
@@ -357,6 +366,7 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
     abonnes_list = f"CMON-Abonnes-{season}"
     abonnes_vip_list = f"CMON-Abonnes-VIP-{season}"
     membres_list = f"CMON-Membres-{season}"
+    invites_vip_list = f"CMON-Invites-VIP-{season}"
 
     def add_season_ticket(row: Dict[str, Any], name: str, event_type: str, key: str) -> None:
         # VIP season tickets get their own list under Business Engagement,
@@ -396,6 +406,8 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
             add_season_ticket(row, name, event_type, key)
         if any(line["kind"] == "membre" for line in row.get("lines") or []):
             add(membres_list, "Membres (Carte membre)", "membre", folders["membre"], None, key)
+        if event_type == "match" and has_vip_ticket(row):
+            add(invites_vip_list, "Invités VIP", "invite_vip", folders["invite_vip"], None, key)
         if is_placeholder(name):
             placeholders.add(name)
             continue
@@ -411,6 +423,14 @@ def plan_event_lists(orders: Iterable[Dict[str, Any]], events: Iterable[Dict[str
             warned.add(list_name)
             plan["warnings"].append(f"{list_name} : {warning}")
         add(list_name, name, event_type, folders.get(event_type, season_folder), event_day.isoformat(), key)
+
+    # VIP season ticket holders also sit in the VIP area: they stay in their
+    # own list, the guests list is for VIP guests without a season ticket.
+    if invites_vip_list in plan["lists"]:
+        guests = plan["lists"][invites_vip_list]
+        guests["keys"] -= plan["lists"].get(abonnes_vip_list, {}).get("keys", set())
+        if not guests["keys"]:
+            del plan["lists"][invites_vip_list]
 
     for name in sorted(placeholders):
         plan["warnings"].append(f"Événement '{name}' encore « A DEFINIR » : liste créée quand il sera programmé.")

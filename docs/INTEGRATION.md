@@ -183,6 +183,7 @@ Chaque événement est classé avant la sync, et chaque type a son dossier Brevo
 | `match` | le club contre un adversaire (« Foxes vs Lions ») | `Billetterie 2026-2027` | `CMON-FOXES-[ADV]-[date]` | oui |
 | `abonnement` | abonnement, abo, season ticket, pass (pass ou places « Place abonné ») | `Abonnement` | `CMON-Abonnes-2026-2027` | non |
 | abonnement **VIP** | produit d'abonnement contenant « VIP » | `Business Engagement` | `CMON-Abonnes-VIP-2026-2027` (pas répété dans la liste abonnés) | non |
+| **invité VIP** | billet d'un match en zone ou au tarif « VIP », sans abonnement VIP | `Business Engagement` | `CMON-Invites-VIP-2026-2027` (en plus de la liste du match) ; `SOURCE_ACQUISITION` = `Business Engagement` si c'est son premier achat | oui (c'est un billet de match) |
 | membre | places « Carte membre » (matchs et camps) | `Members & Staff` | `CMON-Membres-2026-2027` | non (sauf billet scanné) |
 | `camp` | camp, stage | `Billetterie 2026-2027` | `CMON-FOXES-[Description]-[date]` | non |
 | `partenaire` | partenaire, sponsor, business, b2b | `Business Engagement` | `CMON-FOXES-[Description]-[date]` | non |

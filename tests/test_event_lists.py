@@ -319,3 +319,39 @@ def test_dry_run_lists_brevo_folders_when_one_is_not_found():
     assert summary["brevo_folders"] == {"3": "Billetterie 2026-2027", "9": "Abonnés saison"}
     assert any("Abonnement" in w and "brevo_folders" in w for w in result["warnings"])
     brevo.create_folder.assert_not_called()
+
+
+def _vip_order(email, zone="Zone VIP", tariff="VIP", order_id=1, status="free"):
+    return {"order_id": order_id, "date": "2026-10-01 12:00:00", "status": status,
+            "customer": {"email": email, "firstname": "A", "lastname": "B"},
+            "event_id": 100, "event_name": "Pully Lausanne Foxes vs Lions de Genève - 10.10.26 - championnat SBL",
+            "event_date": "2026-10-10 17:30:00", "amount": 0.0,
+            "tickets": [{"zone_name": zone, "category_name": tariff, "status": "scanned"}]}
+
+
+def test_vip_guests_get_their_own_list_under_business_engagement():
+    vip_pass = {"order_id": 9, "date": "2026-08-01 12:00:00", "status": "paid",
+                "pass_type": "Abonnement VIP Expérience Njørden - Individuel I 2026 - 2027",
+                "category_name": "Abonnement VIP Expérience Njørden - Individuel I 2026 - 2027",
+                "holder": {"email": "holder@x.ch"}}
+    orders = [_vip_order("guest@x.ch"), _vip_order("holder@x.ch", order_id=2),
+              _vip_order("fan@x.ch", zone="Places assises", tariff="Adulte", order_id=3, status="paid"),
+              vip_pass]
+    keys = {"guest@x.ch", "holder@x.ch", "fan@x.ch"}
+    plan = plan_event_lists(orders, [], keys, {"club_code": "FOXES", "season": "2026-2027",
+                                               "opponent_codes": {"Lions de Genève": "LIONS"},
+                                               "club_keywords": ["foxes", "pully"]}, today=date(2026, 10, 12))
+    guests = plan["lists"]["CMON-Invites-VIP-2026-2027"]
+    assert guests["keys"] == {"guest@x.ch"} and guests["folder"] == "Business Engagement"
+    assert plan["lists"]["CMON-Abonnes-VIP-2026-2027"]["keys"] == {"holder@x.ch"}
+    assert plan["lists"]["CMON-FOXES-LIONS-20261010"]["keys"] == keys
+
+
+def test_vip_guest_first_purchase_counts_as_business_engagement():
+    from ticketing_sync.event_lists import EventResolver
+    from ticketing_sync.infomaniak import normalize_order
+    from ticketing_sync.sync import first_order_types
+    rows = [normalize_order(o) for o in (_vip_order("guest@x.ch"),
+                                         _vip_order("fan@x.ch", zone="Places assises", tariff="Adulte"))]
+    types = first_order_types(rows, EventResolver([], {"club_keywords": ["foxes"]}), {})
+    assert types == {"guest@x.ch": "partenaire", "fan@x.ch": "match"}

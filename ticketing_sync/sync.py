@@ -41,6 +41,7 @@ from ticketing_sync.event_lists import (
     _words,
     current_season,
     ensure_event_lists,
+    has_vip_ticket,
     is_vip_season_ticket,
     parse_event_date,
     plan_event_lists,
@@ -312,8 +313,9 @@ def first_order_types(rows: List[Dict[str, Any]], resolve: EventResolver,
     """Per buyer key, the acquisition channel of the first purchase (earliest
     order date; undated orders only count when no dated order exists).
 
-    A VIP season ticket is a B2B relationship, filed under Business
-    Engagement like partner events, so it counts as ``partenaire``.
+    A VIP season ticket or a VIP ticket on a match (a VIP guest) is a B2B
+    relationship, filed under Business Engagement like partner events, so
+    it counts as ``partenaire``.
     """
     first: Dict[str, Tuple[str, Optional[str]]] = {}
     for row in rows:
@@ -321,7 +323,7 @@ def first_order_types(rows: List[Dict[str, Any]], resolve: EventResolver,
         key = row_key(row, phone_to_email)
         if key not in first or when < first[key][0]:
             name, _, event_type = resolve(row)
-            if is_vip_season_ticket(row, name, event_type):
+            if is_vip_season_ticket(row, name, event_type) or (event_type == "match" and has_vip_ticket(row)):
                 event_type = "partenaire"
             first[key] = (when, event_type)
     return {key: event_type for key, (_, event_type) in first.items()}

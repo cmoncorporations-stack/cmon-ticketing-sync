@@ -212,6 +212,7 @@ Ces règles sont communes à toutes les organisations ; le détail complet est d
 | Événement partenaire | `CMON-<CLUB>-<Description>-<AAAAMMJJ>` | `Business Engagement` |
 | Abonnement | `CMON-Abonnes-<saison>` | `Abonnement` |
 | Abonnement VIP | `CMON-Abonnes-VIP-<saison>` (séparée, VIP absents de la liste classique) | `Business Engagement` |
+| Invité VIP (billet zone ou tarif VIP sur un match, sans abonnement VIP) | `CMON-Invites-VIP-<saison>`, en plus de la liste du match ; source `Business Engagement` si premier achat | `Business Engagement` |
 | Carte de membre | `CMON-Membres-<saison>` | `Members & Staff` |
 
 Une liste de match contient les acheteurs et les présents, pas toutes les places pré-générées. Une date est obligatoire dans le nom d'une liste : un événement « A DEFINIR » n'a sa liste qu'une fois daté.
