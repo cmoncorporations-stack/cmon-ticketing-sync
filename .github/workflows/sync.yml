@@ -19,7 +19,7 @@ on:
         required: true
         default: dry-run
         type: choice
-        options: [test, probe, schema, diagnose, dry-run, sync]
+        options: [test, probe, schema, diagnose, revenue, dry-run, sync]
       targets:
         description: "diagnose : empreintes d'email (sha256, 16 caractères), séparées par des virgules"
         required: false
@@ -78,6 +78,7 @@ jobs:
               probe) args="$args --probe" ;;
               schema) args="$args --schema" ;;
               diagnose) args="$args --diagnose" ;;
+              revenue) args="$args --revenue" ;;
               dry-run) args="$args --dry-run" ;;
               sync) ;;
             esac

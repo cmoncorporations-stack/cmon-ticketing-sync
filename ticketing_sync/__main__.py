@@ -3,6 +3,7 @@
     python -m ticketing_sync --club clubs/foxes.json --test      # Infomaniak access OK?
     python -m ticketing_sync --club clubs/foxes.json --probe     # which auth header works?
     python -m ticketing_sync --club clubs/foxes.json --schema    # API field names (no values)
+    python -m ticketing_sync --club clubs/foxes.json --revenue   # ticketing revenue to date
     python -m ticketing_sync --club clubs/foxes.json --dry-run   # read only
     python -m ticketing_sync --club clubs/foxes.json             # real sync
     python -m ticketing_sync --club clubs/foxes.json --if-due    # only at H-24 / H+24 of a match
@@ -112,6 +113,8 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
                         help="Print the field names and types returned by the API (no values)")
     parser.add_argument("--diagnose", action="store_true",
                         help="Read only: how the sync sees the contacts whose email hashes are in DIAG_HASHES")
+    parser.add_argument("--revenue", action="store_true",
+                        help="Read only: ticketing revenue to date (totals, no contact data)")
     parser.add_argument("--probe", action="store_true",
                         help="Try every way of sending the Infomaniak key (read only) and report which one works")
     parser.add_argument("--if-due", action="store_true",
@@ -145,6 +148,17 @@ def main(argv: Optional[List[str]] = None, now: Optional[datetime] = None) -> in
             print(f"Infomaniak : {e}", file=sys.stderr)
             return 1
         print(json.dumps({"club": club, **report}, indent=1, ensure_ascii=False))
+        return 0
+
+    if args.revenue:
+        from ticketing_sync.revenue import revenue
+        try:
+            report = revenue(ticketing, config)
+        except InfomaniakTicketingAPIError as e:
+            print(f"Infomaniak : {e}", file=sys.stderr)
+            return 1
+        print(json.dumps({"club": club, "ran_at": datetime.now(timezone.utc).isoformat(), **report},
+                         indent=1, ensure_ascii=False))
         return 0
 
     if args.probe:
